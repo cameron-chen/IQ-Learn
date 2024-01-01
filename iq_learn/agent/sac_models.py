@@ -1,12 +1,14 @@
-import torch
 import math
+
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import Normal
 from torch import distributions as pyd
 from torch.autograd import Variable, grad
+from torch.distributions import Normal
 
 import utils.utils as utils
+
 
 # Initialize Policy weights
 def orthogonal_init_(m):
@@ -293,3 +295,40 @@ class DiagGaussianActor(nn.Module):
         log_prob = dist.log_prob(action).sum(-1, keepdim=True)
 
         return action, log_prob, dist.mean
+
+class CondDoubleQCritic(DoubleQCritic):
+    def __init__(self, obs_dim, action_dim, cond_dim, hidden_dim, hidden_depth, args):
+        super().__init__(obs_dim, action_dim, hidden_dim, hidden_depth, args)
+        self.cond_layer = nn.Linear(cond_dim, obs_dim+action_dim)
+        
+    def forward(self, inputs):
+        obs, action, cond = inputs
+        cond_hidden = self.cond_layer(cond)
+        cond_hidden_obs, cond_hidden_action = torch.split(cond_hidden, [self.obs_dim, self.action_dim], dim=1)
+        obs, action = obs + cond_hidden_obs, action + cond_hidden_action
+        return super().forward(obs, action)
+    
+    def grad_pen(self, inputs, lambda_=1):
+        obs1, action1, obs2, action2, cond = inputs
+        cond_hidden = self.cond_layer(cond)
+        cond_hidden_obs, cond_hidden_action = torch.split(cond_hidden, [self.obs_dim, self.action_dim], dim=1)
+        obs1, action1 = obs1 + cond_hidden_obs, action1 + cond_hidden_action
+        obs2, action2 = obs2 + cond_hidden_obs, action2 + cond_hidden_action
+        return super().grad_pen(obs1, action1, obs2, action2, lambda_)
+
+class CondDiagGaussianActor(DiagGaussianActor): 
+    def __init__(self, obs_dim, action_dim, cond_dim, hidden_dim, hidden_depth,
+                 log_std_bounds):
+        super().__init__(obs_dim, action_dim, hidden_dim, hidden_depth,
+                 log_std_bounds)
+        self.cond_layer = nn.Linear(cond_dim, obs_dim)
+        
+    def forward(self, inputs):
+        obs, cond = inputs
+        obs = obs + self.cond_layer(cond)
+        return super().forward(obs)
+
+    def sample(self, inputs):
+        obs, cond = inputs
+        obs = obs + self.cond_layer(cond)
+        return super().sample(obs)

@@ -129,5 +129,8 @@ dmypy.json
 .DS_Store
 
 # Ignored folders
+iq_learn/.vscode
 iq_learn/outputs
 iq_learn/wandb
+iq_learn/envs
+iq_learn/experts

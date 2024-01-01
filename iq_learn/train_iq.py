@@ -8,9 +8,9 @@ import datetime
 import os
 import random
 import time
+import types
 from collections import deque
 from itertools import count
-import types
 
 import hydra
 import numpy as np
@@ -20,13 +20,14 @@ import wandb
 from omegaconf import DictConfig, OmegaConf
 from tensorboardX import SummaryWriter
 
-from wrappers.atari_wrapper import LazyFrames
-from make_envs import make_env
-from dataset.memory import Memory
 from agent import make_agent
-from utils.utils import eval_mode, average_dicts, get_concat_samples, evaluate, soft_update, hard_update
-from utils.logger import Logger
+from dataset.memory import Memory
 from iq import iq_loss
+from make_envs import make_env
+from utils.logger import Logger
+from utils.utils import (average_dicts, eval_mode, evaluate,
+                         get_concat_samples, hard_update, soft_update)
+from wrappers.atari_wrapper import LazyFrames
 
 torch.set_num_threads(2)
 
@@ -34,6 +35,8 @@ torch.set_num_threads(2)
 def get_args(cfg: DictConfig):
     cfg.device = "cuda:0" if torch.cuda.is_available() else "cpu"
     cfg.hydra_base_dir = os.getcwd()
+    cfg.env_name = cfg.env_name
+    cfg.agent_name = cfg.agent_name
     print(OmegaConf.to_yaml(cfg))
     return cfg
 
@@ -41,8 +44,8 @@ def get_args(cfg: DictConfig):
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig):
     args = get_args(cfg)
-    wandb.init(project=args.project_name, entity='iq-learn',
-               sync_tensorboard=True, reinit=True, config=args)
+    # wandb.init(project="b-learn", # FIXME: enable wandb
+    #            sync_tensorboard=True, reinit=True, config=args)
 
     # set seeds
     random.seed(args.seed)
@@ -117,13 +120,13 @@ def main(cfg: DictConfig):
         state_0 = np.array(state_0) / 255.0
     state_0 = torch.FloatTensor(np.array(state_0)).to(args.device)
 
-    for epoch in count():
+    for epoch in count(): # n of episodes
         state = env.reset()
         episode_reward = 0
         done = False
 
         start_time = time.time()
-        for episode_step in range(EPISODE_STEPS):
+        for episode_step in range(EPISODE_STEPS): # n of steps
 
             if steps < args.num_seed_steps:
                 # Seed replay buffer with random actions
@@ -147,7 +150,8 @@ def main(cfg: DictConfig):
                 if returns > best_eval_returns:
                     # Store best eval returns
                     best_eval_returns = returns
-                    wandb.run.summary["best_returns"] = best_eval_returns
+                    if wandb.run:
+                        wandb.run.summary["best_returns"] = best_eval_returns
                     save(agent, epoch, args, output_dir='results_best')
 
             # only store done true when episode finishes without hitting timelimit (allow infinite bootstrap)

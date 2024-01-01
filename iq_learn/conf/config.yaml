@@ -7,9 +7,13 @@ device: ??? # to be specified later
 gamma: 0.99
 seed: 0
 pretrain: null
+cond_dim: null # dimension of conditional input (e.g. goal)
 
 num_seed_steps: 0 # Don't need seeding for IL (Use 1000 for RL)
 only_expert_states: False
+
+env_name: ${env.name} # for wandb grouping
+agent_name: ${agent.name} # for wandb grouping
 
 train:
   batch: 32
