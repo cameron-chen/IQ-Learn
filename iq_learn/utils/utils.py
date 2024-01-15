@@ -117,6 +117,17 @@ def get_concat_samples(policy_batch, expert_batch, args):
         # convert expert reward to 1
         expert_batch_reward = torch.ones_like(expert_batch_reward)
 
+    def change_shape(online, expert):
+        shape = online.shape
+        expert = torch.reshape(expert, shape)
+        return expert
+    
+    expert_batch_state = change_shape(online_batch_state, expert_batch_state)
+    expert_batch_next_state = change_shape(online_batch_next_state, expert_batch_next_state)
+    expert_batch_action = change_shape(online_batch_action, expert_batch_action)
+    expert_batch_reward = change_shape(online_batch_reward, expert_batch_reward)
+    expert_batch_done = change_shape(online_batch_done, expert_batch_done)
+
     batch_state = torch.cat([online_batch_state, expert_batch_state], dim=0)
     batch_next_state = torch.cat(
         [online_batch_next_state, expert_batch_next_state], dim=0)

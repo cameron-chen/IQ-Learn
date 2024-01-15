@@ -44,8 +44,8 @@ def get_args(cfg: DictConfig):
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig):
     args = get_args(cfg)
-    # wandb.init(project="b-learn", # FIXME: enable wandb
-    #            sync_tensorboard=True, reinit=True, config=args)
+    wandb.init(project="hil_iq", # FIXME: enable wandb
+               sync_tensorboard=True, reinit=True, config=args)
 
     # set seeds
     random.seed(args.seed)
@@ -299,12 +299,18 @@ def iq_update(self, policy_buffer, expert_buffer, logger, step):
 
     if self.actor and step % self.actor_update_frequency == 0:
         if not self.args.agent.vdice_actor:
-
+            
+            def change_shape(online, expert):
+                shape = online.shape
+                expert = torch.reshape(expert, shape)
+                return expert
+            
+            expert_item = change_shape(policy_batch[0], expert_batch[0])
             if self.args.offline:
-                obs = expert_batch[0]
+                obs = expert_item
             else:
                 # Use both policy and expert observations
-                obs = torch.cat([policy_batch[0], expert_batch[0]], dim=0)
+                obs = torch.cat([policy_batch[0], expert_item], dim=0)
 
             if self.args.num_actor_updates:
                 for i in range(self.args.num_actor_updates):
