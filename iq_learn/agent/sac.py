@@ -66,7 +66,13 @@ class SAC(object):
         return self.critic_target
 
     def choose_action(self, state, sample=False):
-        state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
+        # state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
+        if type(state) == tuple:
+            state = torch.FloatTensor(state[0]).to(self.device).unsqueeze(0)
+        elif state.ndim == 1:
+            state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
+        else:
+            state = torch.FloatTensor(state).to(self.device)
         dist = self.actor(state)
         action = dist.sample() if sample else dist.mean
         # assert action.ndim == 2 and action.shape[0] == 1
@@ -182,6 +188,14 @@ class SAC(object):
             self.actor.load_state_dict(torch.load(actor_path, map_location=self.device))
         if critic_path is not None:
             self.critic.load_state_dict(torch.load(critic_path, map_location=self.device))
+
+    # load from rl_zoo3 baselines
+    def load(self, actor_path, critic_path, suffix=""):
+        print('Loading models from {} and {}'.format(actor_path, critic_path))
+        if actor_path is not None:
+            self.actor.load_state_dict(torch.load(actor_path, map_location=self.device), strict=False)
+        if critic_path is not None:
+            self.critic.load_state_dict(torch.load(critic_path, map_location=self.device), strict=False)
 
     def infer_q(self, state, action):
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)

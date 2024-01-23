@@ -1,26 +1,27 @@
 # @package _global_
 
 env:
-  name: HalfCheetah-v2
-  demo: HalfCheetah-v3_150000_steps_100_trajs.pkl
+  name: HalfCheetah-v3
+  demo: HalfCheetah-v3_Gemini_2k+6k.pkl
   # learn_steps: 1e5
   # eval_interval: 1e3
 
   replay_mem: 1e6
   # initial_mem: 10000
 
-  eps_steps: 100000
+  eps_steps: 50000
   eps_window: 10
-  learn_steps: 5e5
+  learn_steps: 1e6
   eval_interval: 5e3
 
 expert:
-  demos: 1
+  demos: 6
   subsample_freq: 1
 
 eval:
   policy: 
-  threshold: 5000
+  threshold: 1000
+  # use_baselines: True
 
 agent:
   name: sac

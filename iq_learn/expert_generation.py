@@ -1,13 +1,13 @@
 import random
 from itertools import count
 from collections import defaultdict
-
+# import gymnasium as gym
 import gym
 import hydra
 import numpy as np
 import torch
 from omegaconf import DictConfig, OmegaConf
-from tensorboardX import SummaryWriter
+# from tensorboardX import SummaryWriter
 
 from agent import make_agent
 from make_envs import make_env, is_atari
@@ -30,19 +30,42 @@ def main(cfg: DictConfig):
 
     env = make_env(args)
     if args.eval.use_baselines:
-        from baselines_zoo.baselines_expert import BaselinesExpert
-        agent = BaselinesExpert(args.env.name, folder='rl-trained-agents')
+        # from baselines_zoo.baselines_expert import BaselinesExpert
+        # agent = BaselinesExpert(args.env.name, folder='rl-trained-agents')
         # env = agent.env
+        from stable_baselines3 import SAC
+        agent = SAC(
+            "MlpPolicy", 
+            env=env,
+            verbose=1
+        )    
+        train_timesteps = 80000
+        # save the model at step 10000, 20000, 30000, 40000, 50000, 60000, 70000
+        for i in range(4):
+            agent.learn(total_timesteps=250000)
+            agent.save(f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/sac_sheetah_{(i+1)*250000}.zip')
+            print(f"saved model at step {(i+1)*250000}")
+        # agent.load_state_dict(torch.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/policy.pth"))
     else:
-        agent = make_agent(env, args)
+        from stable_baselines3 import SAC
+        agent = SAC(
+            "MlpPolicy", 
+            env=env,
+            verbose=1
+        )
+        path = "/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/sac_sheetah_1000000.zip"
+        agent = SAC.load(path, env=env)
+        # agent = make_agent(env, args)
+        # agent.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/actor.optimizer.pth",
+        #        "/home/zichang/proj/IQ-Learn/iq_learn/iq.para/critic.optimizer.pth")
 
     expert_file = f'{args.method.type}.para'
     if args.eval.policy:
         expert_file = f'{args.eval.policy}'
     print(f'Loading expert from: {expert_file}')
 
-    agent.load(hydra.utils.to_absolute_path(expert_file), f'_{args.env.name}')
-
+    # agent.load(hydra.utils.to_absolute_path(expert_file), f'_{args.env.name}')
+    
     episode_reward = 0
 
     REPLAY_MEMORY = None
@@ -60,24 +83,29 @@ def main(cfg: DictConfig):
     for epoch in count():
         if saved_eps >= MAX_EPS:
             break
-
-        state = env.reset()
+        vec_env = agent.get_env()
+        state, infos = env.reset()
+        
+        # state = env.reset()
+        # state = state[0]
         episode_reward = 0
         traj = []
 
         episode_infos = None
         for time_steps in range(EPS_STEPS):
-            action = agent.choose_action(state)
-            next_state, reward, done, info = env.step(action)
+            action, _states = agent.predict(state)
+            # action, _states = agent.predict(state, deterministic=True)
+            # action = agent.choose_action(state)
+            next_state, reward, done, terminated, info = env.step(action)
             if is_atari(args.env.name) and isinstance(action, np.ndarray):
                 action = action.item()
 
             traj.append((state, next_state, action, reward, done))
-
+            # print(reward)
             episode_reward += reward
             if memory_replay.size() == REPLAY_MEMORY:
                 print('expert replay saved...')
-                memory_replay.save(f'experts/{args.env_name}_{args.expert.demos}')
+                memory_replay.save(f'experts/{args.env_name}_{args.expert.demos}_{int(episode_reward)}')
                 exit()
 
             state = next_state
@@ -90,12 +118,16 @@ def main(cfg: DictConfig):
                     episode_reward = episode_infos['r']
                     print("Atari Episode Length", episode_infos["l"])
 
-            if done:
-                use_success = 'is_success' in info.keys()
-                score = info.get('is_success')
+            if done or terminated:
+                # use_success = 'is_success' in info.keys()
+                # score = info.get('is_success')
                 break
 
-        if (not REWARD_THRESHOLD or episode_reward >= REWARD_THRESHOLD) and (not use_success or score >= 1.):
+        
+        # if (not REWARD_THRESHOLD or episode_reward >= REWARD_THRESHOLD) and (not use_success or score >= 1.):
+        if episode_reward.ndim == 1:
+            episode_reward = episode_reward[0]
+        if (not REWARD_THRESHOLD or episode_reward >= REWARD_THRESHOLD):
             saved_eps += 1
             states, next_states, actions, rewards, dones = zip(*traj)
 
@@ -117,7 +149,7 @@ def main(cfg: DictConfig):
     get_data_stats(expert_trajs, np.array(expert_rewards), np.array(expert_lengths))
 
     print('Final size of Replay Buffer: {}'.format(sum(expert_trajs["lengths"])))
-    with open(hydra.utils.to_absolute_path(f'experts/{args.env.name}_{args.expert.demos}.pkl'), 'wb') as f:
+    with open(hydra.utils.to_absolute_path(f'experts/{args.env_name}_{args.expert.demos}_{int(episode_reward)}r.pkl'), 'wb') as f:
         pickle.dump(expert_trajs, f)
     exit()
 

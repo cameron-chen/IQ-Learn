@@ -62,8 +62,8 @@ def main(cfg: DictConfig):
     eval_env = make_env(args)
 
     # Seed envs
-    env.seed(args.seed)
-    eval_env.seed(args.seed + 10)
+    # env.seed(args.seed) # TODO: uncomment this to enable seed on gym
+    # eval_env.seed(args.seed + 10)
 
     REPLAY_MEMORY = int(env_args.replay_mem)
     INITIAL_MEMORY = int(env_args.initial_mem)
@@ -115,10 +115,11 @@ def main(cfg: DictConfig):
     episode_reward = 0
 
     # Sample initial states from env
-    state_0 = [env.reset()] * INITIAL_STATES
-    if isinstance(state_0[0], LazyFrames):
-        state_0 = np.array(state_0) / 255.0
-    state_0 = torch.FloatTensor(np.array(state_0)).to(args.device)
+    # state_0 = [env.reset()] * INITIAL_STATES
+    # if isinstance(state_0[0], LazyFrames):
+    #     state_0 = np.array(state_0) / 255.0
+    #     print("lazy frames detected")
+    # state_0 = torch.FloatTensor(np.array(state_0,dtype=np.float32)).to(args.device)
 
     for epoch in count(): # n of episodes
         state = env.reset()
@@ -127,14 +128,13 @@ def main(cfg: DictConfig):
 
         start_time = time.time()
         for episode_step in range(EPISODE_STEPS): # n of steps
-
             if steps < args.num_seed_steps:
                 # Seed replay buffer with random actions
                 action = env.action_space.sample()
             else:
                 with eval_mode(agent):
                     action = agent.choose_action(state, sample=True)
-            next_state, reward, done, _ = env.step(action)
+            next_state, reward, done, terminated, _ = env.step(action)
             episode_reward += reward
             steps += 1
 
@@ -158,7 +158,8 @@ def main(cfg: DictConfig):
             done_no_lim = done
             if str(env.__class__.__name__).find('TimeLimit') >= 0 and episode_step + 1 == env._max_episode_steps:
                 done_no_lim = 0
-            online_memory_replay.add((state, next_state, action, reward, done_no_lim))
+            if type(state) == np.ndarray:
+                online_memory_replay.add((state, next_state, action, reward, done_no_lim))
 
             if online_memory_replay.size() > INITIAL_MEMORY:
                 # Start learning
@@ -184,7 +185,7 @@ def main(cfg: DictConfig):
                     for key, loss in losses.items():
                         writer.add_scalar(key, loss, global_step=learn_steps)
 
-            if done:
+            if done or terminated:
                 break
             state = next_state
 
