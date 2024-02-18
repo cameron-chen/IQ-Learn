@@ -2,7 +2,7 @@
 
 env:
   name: HalfCheetah-v2
-  demo: halfcheetah-expert-v2.pkl
+  demo: HalfCheetah-v2_25.pkl
   # learn_steps: 1e5
   # eval_interval: 1e3
 
