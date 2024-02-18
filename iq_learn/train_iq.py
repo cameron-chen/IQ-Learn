@@ -134,7 +134,7 @@ def main(cfg: DictConfig):
             else:
                 with eval_mode(agent):
                     action = agent.choose_action(state, sample=True)
-            next_state, reward, done, terminated, _ = env.step(action)
+            next_state, reward, done, info = env.step(action)
             episode_reward += reward
             steps += 1
 
@@ -185,7 +185,7 @@ def main(cfg: DictConfig):
                     for key, loss in losses.items():
                         writer.add_scalar(key, loss, global_step=learn_steps)
 
-            if done or terminated:
+            if done:
                 break
             state = next_state
 
