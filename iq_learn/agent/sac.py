@@ -66,13 +66,23 @@ class SAC(object):
         return self.critic_target
 
     def choose_action(self, state, sample=False):
+        # state, cond = state_cond
         # state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
-        if type(state) == tuple:
-            state = torch.FloatTensor(state[0]).to(self.device).unsqueeze(0)
-        elif state.ndim == 1:
+        # if type(state) == tuple:
+        #     state = torch.FloatTensor(state[0]).to(self.device).unsqueeze(0)
+        # elif state.ndim == 1:
+        #     state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
+        # else:
+        #     state = torch.FloatTensor(state).to(self.device)
+        # dist = self.actor(state)
+        # action = dist.sample() if sample else dist.mean
+        # # assert action.ndim == 2 and action.shape[0] == 1
+        # return action.detach().cpu().numpy()[0]
+        if isinstance(state, np.ndarray):
             state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
-        else:
-            state = torch.FloatTensor(state).to(self.device)
+        elif isinstance(state, tuple) or isinstance(state, list):
+            state = [torch.FloatTensor(s).to(self.device).unsqueeze(0) for s in state]
+        assert len(state)==2
         dist = self.actor(state)
         action = dist.sample() if sample else dist.mean
         # assert action.ndim == 2 and action.shape[0] == 1
@@ -80,13 +90,23 @@ class SAC(object):
 
     def getV(self, obs):
         action, log_prob, _ = self.actor.sample(obs)
-        current_Q = self.critic(obs, action)
+        if isinstance(obs, list) or isinstance(obs, tuple):
+            _obs, cond = obs
+            current_Q = self.critic((_obs, action, cond))
+        else:
+            current_Q = self.critic(obs, action)
+        # current_Q = self.critic(obs, action)
         current_V = current_Q - self.alpha.detach() * log_prob
         return current_V
 
     def get_targetV(self, obs):
         action, log_prob, _ = self.actor.sample(obs)
-        target_Q = self.critic_target(obs, action)
+        if isinstance(obs, list) or isinstance(obs, tuple):
+            _obs, cond = obs
+            target_Q = self.critic_target((_obs, action, cond))
+        else:
+            target_Q = self.critic_target(obs, action)
+        # target_Q = self.critic_target(obs, action)
         target_V = target_Q - self.alpha.detach() * log_prob
         return target_V
 
@@ -135,7 +155,12 @@ class SAC(object):
 
     def update_actor_and_alpha(self, obs, logger, step):
         action, log_prob, _ = self.actor.sample(obs)
-        actor_Q = self.critic(obs, action)
+        if isinstance(obs, list) or isinstance(obs, tuple):
+            _obs, cond = obs
+            actor_Q = self.critic((_obs, action, cond))
+        else:
+            actor_Q = self.critic(obs, action)
+        # actor_Q = self.critic(obs, action)
 
         actor_loss = (self.alpha.detach() * log_prob - actor_Q).mean()
 

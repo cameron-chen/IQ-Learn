@@ -11,11 +11,11 @@ env:
 
   eps_steps: 100000
   eps_window: 10
-  learn_steps: 5e5
+  learn_steps: 1e6
   eval_interval: 5e3
 
 expert:
-  demos: 1
+  demos: 5
   subsample_freq: 1
 
 eval:

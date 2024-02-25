@@ -28,9 +28,17 @@ from utils.logger import Logger
 from utils.utils import (average_dicts, eval_mode, evaluate,
                          get_concat_samples, hard_update, soft_update)
 from wrappers.atari_wrapper import LazyFrames
+import types
+from dataset.memory import Memory
+from make_envs import make_env
+from utils.logger import Logger
+from utils.utils import (average_dicts, eval_mode, evaluate,
+                         get_concat_samples, hard_update, soft_update)
+from wrappers.atari_wrapper import LazyFrames
+from typing import IO, Any, Dict
+import pickle
 
 torch.set_num_threads(2)
-
 
 def get_args(cfg: DictConfig):
     cfg.device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -44,9 +52,9 @@ def get_args(cfg: DictConfig):
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig):
     args = get_args(cfg)
-    wandb.init(project="hil_iq", # FIXME: enable wandb
-               sync_tensorboard=True, reinit=True, config=args)
-
+    wandb.init(project="hil_iq", sync_tensorboard=True, reinit=True, config=args)
+    COND_DIM = args.cond_dim
+    RANDOM_INDEX = args.random_index
     # set seeds
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -87,7 +95,9 @@ def main(cfg: DictConfig):
     expert_memory_replay.load(hydra.utils.to_absolute_path(f'experts/{args.env.demo}'),
                               num_trajs=args.expert.demos,
                               sample_freq=args.expert.subsample_freq,
-                              seed=args.seed + 42)
+                              seed=args.seed + 42,
+                              cond_dim=COND_DIM,
+                              random_index=RANDOM_INDEX)
     print(f'--> Expert memory size: {expert_memory_replay.size()}')
 
     online_memory_replay = Memory(REPLAY_MEMORY//2, args.seed+1)
@@ -125,7 +135,7 @@ def main(cfg: DictConfig):
         state = env.reset()
         episode_reward = 0
         done = False
-
+        cond = cond = get_random_cond(COND_DIM, RANDOM_INDEX)
         start_time = time.time()
         for episode_step in range(EPISODE_STEPS): # n of steps
             if steps < args.num_seed_steps:
@@ -133,13 +143,13 @@ def main(cfg: DictConfig):
                 action = env.action_space.sample()
             else:
                 with eval_mode(agent):
-                    action = agent.choose_action(state, sample=True)
+                    action = agent.choose_action((state,cond), sample=True)
             next_state, reward, done, info = env.step(action)
             episode_reward += reward
             steps += 1
 
             if learn_steps % args.env.eval_interval == 0:
-                eval_returns, eval_timesteps = evaluate(agent, eval_env, num_episodes=args.eval.eps)
+                eval_returns, eval_timesteps = evaluate(agent, eval_env, num_episodes=args.eval.eps, cond_dim=COND_DIM, random_index=RANDOM_INDEX)
                 returns = np.mean(eval_returns)
                 learn_steps += 1  # To prevent repeated eval at timestep 0
                 logger.log('eval/episode_reward', returns, learn_steps)
@@ -159,7 +169,7 @@ def main(cfg: DictConfig):
             if str(env.__class__.__name__).find('TimeLimit') >= 0 and episode_step + 1 == env._max_episode_steps:
                 done_no_lim = 0
             if type(state) == np.ndarray:
-                online_memory_replay.add((state, next_state, action, reward, done_no_lim))
+                online_memory_replay.add((state, next_state, action, reward, done_no_lim, cond))
 
             if online_memory_replay.size() > INITIAL_MEMORY:
                 # Start learning
@@ -197,6 +207,46 @@ def main(cfg: DictConfig):
         # print('TRAIN\tEp {}\tAverage reward: {:.2f}\t'.format(epoch, np.mean(rewards_window)))
         save(agent, epoch, args, output_dir='results')
 
+# random_index: 1 for real indexed, 0 for fixed index 0, -1 for [-1]*cond_dim
+def get_random_cond(cond_dim, random_index):
+    cond_location = "/home/zichang/proj/IQ-Learn/iq_learn/data/cheetah.pkl"
+    if os.path.isfile(cond_location):
+        # Load data from single file.
+        with open(cond_location, 'rb') as f:
+            conds = read_file(cond_location, f)
+    conds = conds["emb"]
+    # select random index from conds length
+    index = random.randint(0, len(conds)-1)
+    if random_index>0:
+        cond = conds[index][:cond_dim]
+    elif random_index==0:
+        # FIXME: remove fixed index
+        cond = conds[0][:cond_dim]
+    else:
+        cond = [-1]*cond_dim
+    return cond
+
+def read_file(path: str, file_handle: IO[Any]) -> Dict[str, Any]:
+    """Read file from the input path. Assumes the file stores dictionary data.
+
+    Args:
+        path:               Local or S3 file path.
+        file_handle:        File handle for file.
+
+    Returns:
+        The dictionary representation of the file.
+    """
+    if path.endswith("pt"):
+        data = torch.load(file_handle)
+    elif path.endswith("pkl"):
+        data = pickle.load(file_handle)
+    elif path.endswith("npy"):
+        data = np.load(file_handle, allow_pickle=True)
+        if data.ndim == 0:
+            data = data.item()
+    else:
+        raise NotImplementedError
+    return data
 
 def save(agent, epoch, args, output_dir='results'):
     if epoch % args.save_interval == 0:
@@ -213,13 +263,18 @@ def save(agent, epoch, args, output_dir='results'):
 # Minimal IQ-Learn objective
 def iq_learn_update(self, policy_batch, expert_batch, logger, step):
     args = self.args
-    policy_obs, policy_next_obs, policy_action, policy_reward, policy_done = policy_batch
-    expert_obs, expert_next_obs, expert_action, expert_reward, expert_done = expert_batch
+    # policy_obs, policy_next_obs, policy_action, policy_reward, policy_done = policy_batch
+    # expert_obs, expert_next_obs, expert_action, expert_reward, expert_done = expert_batch
+    policy_obs, policy_next_obs, policy_action, policy_reward, policy_done, policy_cond = policy_batch
+    expert_obs, expert_next_obs, expert_action, expert_reward, expert_done, expert_cond = expert_batch
 
     if args.only_expert_states:
-        expert_batch = expert_obs, expert_next_obs, policy_action, expert_reward, expert_done
+        # expert_batch = expert_obs, expert_next_obs, policy_action, expert_reward, expert_done
+        expert_batch = expert_obs, expert_next_obs, policy_action, expert_reward, expert_done, expert_cond
 
-    obs, next_obs, action, reward, done, is_expert = get_concat_samples(
+    # obs, next_obs, action, reward, done, is_expert = get_concat_samples(
+    #     policy_batch, expert_batch, args)
+    obs, next_obs, action, reward, done, cond, is_expert = get_concat_samples(
         policy_batch, expert_batch, args)
 
     loss_dict = {}
@@ -227,17 +282,21 @@ def iq_learn_update(self, policy_batch, expert_batch, logger, step):
     ######
     # IQ-Learn minimal implementation with X^2 divergence (~15 lines)
     # Calculate 1st term of loss: -E_(ρ_expert)[Q(s, a) - γV(s')]
-    current_Q = self.critic(obs, action)
-    y = (1 - done) * self.gamma * self.getV(next_obs)
+    # current_Q = self.critic(obs, action)
+    # y = (1 - done) * self.gamma * self.getV(next_obs)
+    current_Q = self.critic((obs, action, cond))
+    y = (1 - done) * self.gamma * self.getV((next_obs, cond))
     if args.train.use_target:
         with torch.no_grad():
-            y = (1 - done) * self.gamma * self.get_targetV(next_obs)
+            # y = (1 - done) * self.gamma * self.get_targetV(next_obs)
+            y = (1 - done) * self.gamma * self.get_targetV((next_obs, cond))
 
     reward = (current_Q - y)[is_expert]
     loss = -(reward).mean()
 
     # 2nd term for our loss (use expert and policy states): E_(ρ)[Q(s,a) - γV(s')]
-    value_loss = (self.getV(obs) - y).mean()
+    # value_loss = (self.getV(obs) - y).mean()
+    value_loss = (self.getV((obs,cond)) - y).mean()
     loss += value_loss
 
     # Use χ2 divergence (adds a extra term to the loss)
@@ -253,33 +312,43 @@ def iq_learn_update(self, policy_batch, expert_batch, logger, step):
 
 def iq_update_critic(self, policy_batch, expert_batch, logger, step):
     args = self.args
-    policy_obs, policy_next_obs, policy_action, policy_reward, policy_done = policy_batch
-    expert_obs, expert_next_obs, expert_action, expert_reward, expert_done = expert_batch
+    # policy_obs, policy_next_obs, policy_action, policy_reward, policy_done = policy_batch
+    # expert_obs, expert_next_obs, expert_action, expert_reward, expert_done = expert_batch
+    policy_obs, policy_next_obs, policy_action, policy_reward, policy_done, policy_cond = policy_batch
+    expert_obs, expert_next_obs, expert_action, expert_reward, expert_done, expert_cond = expert_batch
 
     if args.only_expert_states:
         # Use policy actions instead of experts actions for IL with only observations
-        expert_batch = expert_obs, expert_next_obs, policy_action, expert_reward, expert_done
+        # expert_batch = expert_obs, expert_next_obs, policy_action, expert_reward, expert_done
+        expert_batch = expert_obs, expert_next_obs, policy_action, expert_reward, expert_done, expert_cond
 
     batch = get_concat_samples(policy_batch, expert_batch, args)
-    obs, next_obs, action = batch[0:3]
+    # obs, next_obs, action = batch[0:3]
+    obs, next_obs, action, reward, done, cond, is_expert = batch
+    
 
     agent = self
-    current_V = self.getV(obs)
+    # current_V = self.getV(obs)
+    current_V = self.getV((obs, cond))
     if args.train.use_target:
         with torch.no_grad():
-            next_V = self.get_targetV(next_obs)
+            # next_V = self.get_targetV(next_obs)
+            next_V = self.get_targetV((next_obs, cond))
     else:
-        next_V = self.getV(next_obs)
+        # next_V = self.getV(next_obs)
+        next_V = self.getV((next_obs, cond))
 
     if "DoubleQ" in self.args.q_net._target_:
-        current_Q1, current_Q2 = self.critic(obs, action, both=True)
+        # current_Q1, current_Q2 = self.critic(obs, action, both=True)
+        current_Q1, current_Q2 = self.critic((obs, action, cond), both=True)
         q1_loss, loss_dict1 = iq_loss(agent, current_Q1, current_V, next_V, batch)
         q2_loss, loss_dict2 = iq_loss(agent, current_Q2, current_V, next_V, batch)
         critic_loss = 1/2 * (q1_loss + q2_loss)
         # merge loss dicts
         loss_dict = average_dicts(loss_dict1, loss_dict2)
     else:
-        current_Q = self.critic(obs, action)
+        # current_Q = self.critic(obs, action)
+        current_Q = self.critic((obs, action, cond))
         critic_loss, loss_dict = iq_loss(agent, current_Q, current_V, next_V, batch)
 
     logger.log('train/critic_loss', critic_loss, step)
@@ -309,13 +378,16 @@ def iq_update(self, policy_buffer, expert_buffer, logger, step):
             expert_item = change_shape(policy_batch[0], expert_batch[0])
             if self.args.offline:
                 obs = expert_item
+                cond = expert_batch[-1]
             else:
                 # Use both policy and expert observations
                 obs = torch.cat([policy_batch[0], expert_item], dim=0)
+                cond = torch.cat([policy_batch[-1], expert_batch[-1]], dim=0)
 
             if self.args.num_actor_updates:
                 for i in range(self.args.num_actor_updates):
-                    actor_alpha_losses = self.update_actor_and_alpha(obs, logger, step)
+                    # actor_alpha_losses = self.update_actor_and_alpha(obs, logger, step)
+                    actor_alpha_losses = self.update_actor_and_alpha((obs,cond), logger, step)
 
             losses.update(actor_alpha_losses)
 
@@ -326,7 +398,6 @@ def iq_update(self, policy_buffer, expert_buffer, logger, step):
         else:
             hard_update(self.critic_net, self.critic_target_net)
     return losses
-
 
 if __name__ == "__main__":
     main()

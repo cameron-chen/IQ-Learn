@@ -37,11 +37,11 @@ class Memory(object):
         print(b.shape)
         np.save(path, b)
 
-    def load(self, path, num_trajs, sample_freq, seed):
+    def load(self, path, num_trajs, sample_freq, seed, cond_dim, random_index):
         # If path has no extension add npy
         if not path.endswith("pkl"):
             path += '.npy'
-        data = ExpertDataset(path, num_trajs, sample_freq, seed)
+        data = ExpertDataset(path, num_trajs, sample_freq, seed, cond_dim, random_index)
         # data = np.load(path, allow_pickle=True)
         for i in range(len(data)):
             self.add(data[i])
@@ -49,8 +49,10 @@ class Memory(object):
     def get_samples(self, batch_size, device):
         batch = self.sample(batch_size, False)
 
-        batch_state, batch_next_state, batch_action, batch_reward, batch_done = zip(
+        # batch_state, batch_next_state, batch_action, batch_reward, batch_done = zip(
+        batch_state, batch_next_state, batch_action, batch_reward, batch_done, batch_cond = zip(
             *batch)
+        
 
         # Scale obs for atari. TODO: Use flags
         if isinstance(batch_state[0], LazyFrames):
@@ -61,6 +63,7 @@ class Memory(object):
         batch_state = np.array(batch_state)
         batch_next_state = np.array(batch_next_state)
         batch_action = np.array(batch_action)
+        batch_cond = np.array(batch_cond)
 
         batch_state = torch.as_tensor(batch_state, dtype=torch.float, device=device)
         batch_next_state = torch.as_tensor(batch_next_state, dtype=torch.float, device=device)
@@ -69,5 +72,7 @@ class Memory(object):
             batch_action = batch_action.unsqueeze(1)
         batch_reward = torch.as_tensor(batch_reward, dtype=torch.float, device=device).unsqueeze(1)
         batch_done = torch.as_tensor(batch_done, dtype=torch.float, device=device).unsqueeze(1)
+        batch_cond = torch.as_tensor(batch_cond, dtype=torch.float, device=device)
 
-        return batch_state, batch_next_state, batch_action, batch_reward, batch_done
+        # return batch_state, batch_next_state, batch_action, batch_reward, batch_done
+        return batch_state, batch_next_state, batch_action, batch_reward, batch_done, batch_cond    

@@ -8,6 +8,7 @@ gamma: 0.99
 seed: 0
 pretrain: null
 cond_dim: null # dimension of conditional input (e.g. goal)
+random_index: null # whether use random index or fixed index 0 when expert.demos=1
 
 num_seed_steps: 0 # Don't need seeding for IL (Use 1000 for RL)
 only_expert_states: False

@@ -298,37 +298,73 @@ class DiagGaussianActor(nn.Module):
 
 class CondDoubleQCritic(DoubleQCritic):
     def __init__(self, obs_dim, action_dim, cond_dim, hidden_dim, hidden_depth, args):
-        super().__init__(obs_dim, action_dim, hidden_dim, hidden_depth, args)
-        self.cond_layer = nn.Linear(cond_dim, obs_dim+action_dim)
+        # FIXME: concatenation version, concat(obs, cond)
         
-    def forward(self, inputs):
+        # self.cond_layer = nn.Linear(cond_dim, obs_dim+action_dim)
+        if cond_dim>0:
+            # cond version
+            print('--> Using Conditional Version CondDoubleQCritic')
+            self.v_cond = True
+            super().__init__(obs_dim+cond_dim, action_dim+cond_dim, hidden_dim, hidden_depth, args)
+        else:
+            # w/o cond 
+            self.v_cond = False
+            super().__init__(obs_dim, action_dim, hidden_dim, hidden_depth, args)
+        
+    def forward(self, inputs, both=False):
         obs, action, cond = inputs
-        cond_hidden = self.cond_layer(cond)
-        cond_hidden_obs, cond_hidden_action = torch.split(cond_hidden, [self.obs_dim, self.action_dim], dim=1)
-        obs, action = obs + cond_hidden_obs, action + cond_hidden_action
-        return super().forward(obs, action)
+        # cond_hidden = self.cond_layer(cond)
+        # cond_hidden_obs, cond_hidden_action = torch.split(cond_hidden, [self.obs_dim, self.action_dim], dim=1)
+        # obs, action = obs + cond_hidden_obs, action + cond_hidden_action
+
+        if self.v_cond:
+            obs = torch.cat([obs,cond],dim=-1)
+            action = torch.cat([action, cond], dim=-1)
+        return super().forward(obs, action, both)
     
     def grad_pen(self, inputs, lambda_=1):
         obs1, action1, obs2, action2, cond = inputs
-        cond_hidden = self.cond_layer(cond)
-        cond_hidden_obs, cond_hidden_action = torch.split(cond_hidden, [self.obs_dim, self.action_dim], dim=1)
-        obs1, action1 = obs1 + cond_hidden_obs, action1 + cond_hidden_action
-        obs2, action2 = obs2 + cond_hidden_obs, action2 + cond_hidden_action
+        # cond_hidden = self.cond_layer(cond)
+        # cond_hidden_obs, cond_hidden_action = torch.split(cond_hidden, [self.obs_dim, self.action_dim], dim=1)
+        # obs1, action1 = obs1 + cond_hidden_obs, action1 + cond_hidden_action
+        # obs2, action2 = obs2 + cond_hidden_obs, action2 + cond_hidden_action
+
+        if self.v_cond:
+            obs1 = torch.cat([obs1, cond], dim=-1)
+            obs2 = torch.cat([obs2, cond], dim=-1)
+            action1 = torch.cat([action1, cond], dim=-1)
+            action2 = torch.cat([action2, cond], dim=-1)
         return super().grad_pen(obs1, action1, obs2, action2, lambda_)
 
 class CondDiagGaussianActor(DiagGaussianActor): 
     def __init__(self, obs_dim, action_dim, cond_dim, hidden_dim, hidden_depth,
                  log_std_bounds):
-        super().__init__(obs_dim, action_dim, hidden_dim, hidden_depth,
+        # FIXME: concatenation version, concat(obs, cond)
+        if cond_dim>0:
+            # cond version
+            print('--> Using Conditional Version CondDiagGaussianActor')
+            self.v_cond = True
+            super().__init__(obs_dim+cond_dim, action_dim, hidden_dim, hidden_depth,
                  log_std_bounds)
-        self.cond_layer = nn.Linear(cond_dim, obs_dim)
+            self.cond_layer = nn.Linear(cond_dim, obs_dim)
+        else:
+            # w/o cond 
+            self.v_cond = False
+            super().__init__(obs_dim, action_dim, hidden_dim, hidden_depth,
+                 log_std_bounds)
+        
         
     def forward(self, inputs):
         obs, cond = inputs
-        obs = obs + self.cond_layer(cond)
+        # obs = obs + self.cond_layer(cond)
+        if self.v_cond:
+            obs = torch.cat([obs, cond], dim=-1)
         return super().forward(obs)
 
     def sample(self, inputs):
-        obs, cond = inputs
-        obs = obs + self.cond_layer(cond)
-        return super().sample(obs)
+        # obs, cond = inputs
+        # obs = obs + self.cond_layer(cond)
+        # dist = self.forward(obs)
+        # action = dist.rsample()
+        # log_prob = dist.log_prob(action).sum(-1, keepdim=True)
+        return super().sample(inputs)

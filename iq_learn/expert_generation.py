@@ -39,12 +39,14 @@ def main(cfg: DictConfig):
             env=env,
             verbose=1
         )    
-        train_timesteps = 80000
-        # save the model at step 10000, 20000, 30000, 40000, 50000, 60000, 70000
-        for i in range(4):
-            agent.learn(total_timesteps=250000)
-            agent.save(f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/sac_sheetah_{(i+1)*250000}.zip')
-            print(f"saved model at step {(i+1)*250000}")
+        TRAIN_TIMESTEPS = 500000
+        TOTAL_EPOCHS = 4
+        print("--> Training model, please expect a long training time")
+        for i in range(TOTAL_EPOCHS):
+            agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS)
+            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/sac_cheetah_new_{(i+1)*TRAIN_TIMESTEPS}.zip'
+            agent.save(model_save_path)
+            print(f"Saved model at step {(i+1)*TRAIN_TIMESTEPS} at location {model_save_path}")
         # agent.load_state_dict(torch.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/policy.pth"))
     else:
         from stable_baselines3 import SAC
@@ -53,7 +55,7 @@ def main(cfg: DictConfig):
             env=env,
             verbose=1
         )
-        path = "/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/sac_sheetah_1000000.zip"
+        path = "/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/sac_cheetah_new_1000000.zip"
         agent = SAC.load(path, env=env)
         # agent = make_agent(env, args)
         # agent.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/actor.optimizer.pth",
@@ -84,7 +86,7 @@ def main(cfg: DictConfig):
         if saved_eps >= MAX_EPS:
             break
         vec_env = agent.get_env()
-        state, infos = env.reset()
+        state = env.reset()
         
         # state = env.reset()
         # state = state[0]
@@ -96,7 +98,7 @@ def main(cfg: DictConfig):
             action, _states = agent.predict(state)
             # action, _states = agent.predict(state, deterministic=True)
             # action = agent.choose_action(state)
-            next_state, reward, done, terminated, info = env.step(action)
+            next_state, reward, done, info = env.step(action)
             if is_atari(args.env.name) and isinstance(action, np.ndarray):
                 action = action.item()
 
@@ -118,7 +120,7 @@ def main(cfg: DictConfig):
                     episode_reward = episode_infos['r']
                     print("Atari Episode Length", episode_infos["l"])
 
-            if done or terminated:
+            if done:
                 # use_success = 'is_success' in info.keys()
                 # score = info.get('is_success')
                 break
@@ -149,8 +151,10 @@ def main(cfg: DictConfig):
     get_data_stats(expert_trajs, np.array(expert_rewards), np.array(expert_lengths))
 
     print('Final size of Replay Buffer: {}'.format(sum(expert_trajs["lengths"])))
-    with open(hydra.utils.to_absolute_path(f'experts/{args.env_name}_{args.expert.demos}_{int(episode_reward)}r.pkl'), 'wb') as f:
+    save_path = f'experts/{args.env_name}_{args.expert.demos}_{int(episode_reward)}r.pkl'
+    with open(hydra.utils.to_absolute_path(save_path), 'wb') as f:
         pickle.dump(expert_trajs, f)
+    print(f'Expert traj saved in {save_path}')
     exit()
 
 

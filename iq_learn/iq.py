@@ -11,11 +11,13 @@ import torch.nn.functional as F
 def iq_loss(agent, current_Q, current_v, next_v, batch):
     args = agent.args
     gamma = agent.gamma
-    obs, next_obs, action, env_reward, done, is_expert = batch
+    # obs, next_obs, action, env_reward, done, is_expert = batch
+    obs, next_obs, action, env_reward, done, cond, is_expert = batch
 
     loss_dict = {}
     # keep track of value of initial states
-    v0 = agent.getV(obs[is_expert.squeeze(1), ...]).mean()
+    # v0 = agent.getV(obs[is_expert.squeeze(1), ...]).mean()
+    v0 = agent.getV((obs[is_expert.squeeze(1), ...], cond[is_expert.squeeze(1), ...])).mean()
     loss_dict['v0'] = v0.item()
 
     #  calculate 1st term for IQ loss

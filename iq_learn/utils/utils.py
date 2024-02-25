@@ -4,7 +4,10 @@ from torch import nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from torchvision.utils import make_grid, save_image
-
+from typing import IO, Any, Dict
+import pickle
+import os
+import random
 
 class eval_mode(object):
     def __init__(self, *models):
@@ -22,7 +25,7 @@ class eval_mode(object):
         return False
 
 
-def evaluate(actor, env, num_episodes=10, vis=True):
+def evaluate(actor, env, num_episodes=10, vis=True, cond_dim=10, random_index=-1):
     """Evaluates the policy.
     Args:
       actor: A policy to evaluate.
@@ -38,9 +41,12 @@ def evaluate(actor, env, num_episodes=10, vis=True):
         state = env.reset()
         done = False
         terminated = False
+        # cond = [-1]*cond_dim
+         # TODO: add conds for online memory replay
+        cond = get_random_cond(cond_dim, random_index)
         with eval_mode(actor):
             while not done and not terminated:
-                action = actor.choose_action(state, sample=False)
+                action = actor.choose_action((state,cond), sample=False)
                 next_state, reward, done, info = env.step(action)
                 state = next_state
 
@@ -50,6 +56,46 @@ def evaluate(actor, env, num_episodes=10, vis=True):
 
     return total_returns, total_timesteps
 
+# random_index: 1 for real indexed, 0 for fixed index 0, -1 for [-1]*cond_dim
+def get_random_cond(cond_dim, random_index):
+    cond_location = "/home/zichang/proj/IQ-Learn/iq_learn/data/cheetah.pkl"
+    if os.path.isfile(cond_location):
+        # Load data from single file.
+        with open(cond_location, 'rb') as f:
+            conds = read_file(cond_location, f)
+    conds = conds["emb"]
+    # select random index from conds length
+    index = random.randint(0, len(conds)-1)
+    if random_index>0:
+        cond = conds[index][:cond_dim]
+    elif random_index==0:
+        # FIXME: remove fixed index
+        cond = conds[0][:cond_dim]
+    else:
+        cond = [-1]*cond_dim
+    return cond
+
+def read_file(path: str, file_handle: IO[Any]) -> Dict[str, Any]:
+    """Read file from the input path. Assumes the file stores dictionary data.
+
+    Args:
+        path:               Local or S3 file path.
+        file_handle:        File handle for file.
+
+    Returns:
+        The dictionary representation of the file.
+    """
+    if path.endswith("pt"):
+        data = torch.load(file_handle)
+    elif path.endswith("pkl"):
+        data = pickle.load(file_handle)
+    elif path.endswith("npy"):
+        data = np.load(file_handle, allow_pickle=True)
+        if data.ndim == 0:
+            data = data.item()
+    else:
+        raise NotImplementedError
+    return data
 
 def weighted_softmax(x, weights):
     x = x - torch.max(x, dim=0)[0]
@@ -107,10 +153,11 @@ def mlp(input_dim, hidden_dim, output_dim, hidden_depth, output_mod=None):
 
 
 def get_concat_samples(policy_batch, expert_batch, args):
-    online_batch_state, online_batch_next_state, online_batch_action, online_batch_reward, online_batch_done = policy_batch
+    # online_batch_state, online_batch_next_state, online_batch_action, online_batch_reward, online_batch_done = policy_batch
 
-    expert_batch_state, expert_batch_next_state, expert_batch_action, expert_batch_reward, expert_batch_done = expert_batch
-
+    # expert_batch_state, expert_batch_next_state, expert_batch_action, expert_batch_reward, expert_batch_done = expert_batch
+    online_batch_state, online_batch_next_state, online_batch_action, online_batch_reward, online_batch_done, online_batch_cond = policy_batch
+    expert_batch_state, expert_batch_next_state, expert_batch_action, expert_batch_reward, expert_batch_done, expert_batch_cond = expert_batch
     if args.method.type == "sqil":
         # convert policy reward to 0
         online_batch_reward = torch.zeros_like(online_batch_reward)
@@ -134,11 +181,12 @@ def get_concat_samples(policy_batch, expert_batch, args):
     batch_action = torch.cat([online_batch_action, expert_batch_action], dim=0)
     batch_reward = torch.cat([online_batch_reward, expert_batch_reward], dim=0)
     batch_done = torch.cat([online_batch_done, expert_batch_done], dim=0)
+    batch_cond = torch.cat([online_batch_cond, expert_batch_cond], dim=0)
     is_expert = torch.cat([torch.zeros_like(online_batch_reward, dtype=torch.bool),
                            torch.ones_like(expert_batch_reward, dtype=torch.bool)], dim=0)
 
-    return batch_state, batch_next_state, batch_action, batch_reward, batch_done, is_expert
-
+    # return batch_state, batch_next_state, batch_action, batch_reward, batch_done, is_expert
+    return batch_state, batch_next_state, batch_action, batch_reward, batch_done, batch_cond, is_expert
 
 def save_state(tensor, path, num_states=5):
     """Show stack framed of images consisting the state"""
