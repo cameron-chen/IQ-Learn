@@ -39,12 +39,12 @@ def main(cfg: DictConfig):
             env=env,
             verbose=1
         )    
-        TRAIN_TIMESTEPS = 500000
+        TRAIN_TIMESTEPS = 1000000
         TOTAL_EPOCHS = 4
         print("--> Training model, please expect a long training time")
         for i in range(TOTAL_EPOCHS):
             agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS)
-            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/sac_cheetah_new_{(i+1)*TRAIN_TIMESTEPS}.zip'
+            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/sac_cheetah_v2_{(i+1)*TRAIN_TIMESTEPS}.zip'
             agent.save(model_save_path)
             print(f"Saved model at step {(i+1)*TRAIN_TIMESTEPS} at location {model_save_path}")
         # agent.load_state_dict(torch.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/policy.pth"))
@@ -55,7 +55,7 @@ def main(cfg: DictConfig):
             env=env,
             verbose=1
         )
-        path = "/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/sac_cheetah_new_1000000.zip"
+        path = "/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/sac_cheetah_old_1000000.zip"
         agent = SAC.load(path, env=env)
         # agent = make_agent(env, args)
         # agent.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/actor.optimizer.pth",

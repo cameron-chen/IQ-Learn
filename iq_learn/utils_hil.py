@@ -851,7 +851,7 @@ class CheetahLongDataset(Dataset):
     def __init__(self, partition, seq_size=1000):
         mycwd = os.getcwd()
         os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/")
-        dataset_paths = ['/home/zichang/proj/IQ-Learn/iq_learn/experts/HalfCheetah-v2_3000.pkl']
+        dataset_paths = ['/home/zichang/proj/IQ-Learn/iq_learn/experts/HalfCheetah-v3_25_2282r.pkl']
         state = []
         action = []
         level = []

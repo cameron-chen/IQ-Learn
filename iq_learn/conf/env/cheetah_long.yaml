@@ -15,7 +15,7 @@ env:
   eval_interval: 5e3
 
 expert:
-  demos: 5
+  demos: 25
   subsample_freq: 1
 
 eval:

@@ -11,7 +11,7 @@ env:
 
   eps_steps: 100000
   eps_window: 10
-  learn_steps: 1e6
+  learn_steps: 5e5
   eval_interval: 5e3
 
 expert:
