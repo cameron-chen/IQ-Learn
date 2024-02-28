@@ -46,7 +46,10 @@ def evaluate(actor, env, num_episodes=10, vis=True, cond_dim=10, random_index=-1
         cond = get_random_cond(cond_dim, random_index)
         with eval_mode(actor):
             while not done and not terminated:
-                action = actor.choose_action((state,cond), sample=False)
+                if cond_dim==-2:
+                    action = actor.choose_action(state, sample=False)
+                else:
+                    action = actor.choose_action((state,cond), sample=False)
                 next_state, reward, done, info = env.step(action)
                 state = next_state
 

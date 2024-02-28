@@ -9,9 +9,9 @@ env:
   replay_mem: 1e6
   # initial_mem: 10000
 
-  eps_steps: 100000
+  eps_steps: 50000
   eps_window: 10
-  learn_steps: 1e6
+  learn_steps: 5e5
   eval_interval: 5e3
 
 expert:
@@ -21,7 +21,7 @@ expert:
 eval:
   policy: 
   threshold: 1000
-  use_baselines: True
+  # use_baselines: True
 
 agent:
   name: sac

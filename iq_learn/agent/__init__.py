@@ -23,7 +23,7 @@ def make_agent(env, args):
             float(env.action_space.low.min()),
             float(env.action_space.high.max())
         ]
-        if cond_dim is not None:
+        if cond_dim is not None and cond_dim >= -1:
             # change the actor/critic to the conditional version
             print('--> Using conditional SAC agent')
             OmegaConf.set_struct(args, False) # allow dynamic attribute assignment

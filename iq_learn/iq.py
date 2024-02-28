@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 
 # Full IQ-Learn objective with other divergences and options
-def iq_loss(agent, current_Q, current_v, next_v, batch):
+def iq_loss(agent, current_Q, current_v, next_v, batch, cond_dim):
     args = agent.args
     gamma = agent.gamma
     # obs, next_obs, action, env_reward, done, is_expert = batch
@@ -17,7 +17,10 @@ def iq_loss(agent, current_Q, current_v, next_v, batch):
     loss_dict = {}
     # keep track of value of initial states
     # v0 = agent.getV(obs[is_expert.squeeze(1), ...]).mean()
-    v0 = agent.getV((obs[is_expert.squeeze(1), ...], cond[is_expert.squeeze(1), ...])).mean()
+    if cond_dim==-2:
+        v0 = agent.getV(obs[is_expert.squeeze(1), ...]).mean()
+    else:
+        v0 = agent.getV((obs[is_expert.squeeze(1), ...], cond[is_expert.squeeze(1), ...])).mean()
     loss_dict['v0'] = v0.item()
 
     #  calculate 1st term for IQ loss

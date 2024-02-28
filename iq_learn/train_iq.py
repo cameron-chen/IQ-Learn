@@ -81,7 +81,6 @@ def main(cfg: DictConfig):
     INITIAL_STATES = 128  # Num initial states to use to calculate value of initial state distribution s_0
 
     agent = make_agent(env, args)
-
     if args.pretrain:
         pretrain_path = hydra.utils.to_absolute_path(args.pretrain)
         if os.path.isfile(pretrain_path):
@@ -135,7 +134,7 @@ def main(cfg: DictConfig):
         state = env.reset()
         episode_reward = 0
         done = False
-        cond = cond = get_random_cond(COND_DIM, RANDOM_INDEX)
+        cond = get_random_cond(COND_DIM, RANDOM_INDEX)
         start_time = time.time()
         for episode_step in range(EPISODE_STEPS): # n of steps
             if steps < args.num_seed_steps:
@@ -143,7 +142,10 @@ def main(cfg: DictConfig):
                 action = env.action_space.sample()
             else:
                 with eval_mode(agent):
-                    action = agent.choose_action((state,cond), sample=True)
+                    if COND_DIM==-2:
+                        action = agent.choose_action(state, sample=True)
+                    else:
+                        action = agent.choose_action((state, cond), sample=True)
             next_state, reward, done, info = env.step(action)
             episode_reward += reward
             steps += 1
@@ -188,7 +190,7 @@ def main(cfg: DictConfig):
                 agent.iq_update = types.MethodType(iq_update, agent)
                 agent.iq_update_critic = types.MethodType(iq_update_critic, agent)
                 losses = agent.iq_update(online_memory_replay,
-                                         expert_memory_replay, logger, learn_steps)
+                                         expert_memory_replay, logger, learn_steps, COND_DIM)
                 ######
 
                 if learn_steps % args.log_interval == 0:
@@ -310,7 +312,7 @@ def iq_learn_update(self, policy_batch, expert_batch, logger, step):
     return loss
 
 
-def iq_update_critic(self, policy_batch, expert_batch, logger, step):
+def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_dim):
     args = self.args
     # policy_obs, policy_next_obs, policy_action, policy_reward, policy_done = policy_batch
     # expert_obs, expert_next_obs, expert_action, expert_reward, expert_done = expert_batch
@@ -329,27 +331,39 @@ def iq_update_critic(self, policy_batch, expert_batch, logger, step):
 
     agent = self
     # current_V = self.getV(obs)
-    current_V = self.getV((obs, cond))
+    if cond_dim==-2:
+        current_V = self.getV(obs)
+    else:
+        current_V = self.getV((obs, cond))
     if args.train.use_target:
         with torch.no_grad():
             # next_V = self.get_targetV(next_obs)
-            next_V = self.get_targetV((next_obs, cond))
+            if cond_dim==-2:
+                next_V = self.get_targetV(next_obs)
+            else:
+                next_V = self.get_targetV((next_obs, cond))
     else:
         # next_V = self.getV(next_obs)
         next_V = self.getV((next_obs, cond))
 
     if "DoubleQ" in self.args.q_net._target_:
         # current_Q1, current_Q2 = self.critic(obs, action, both=True)
-        current_Q1, current_Q2 = self.critic((obs, action, cond), both=True)
-        q1_loss, loss_dict1 = iq_loss(agent, current_Q1, current_V, next_V, batch)
-        q2_loss, loss_dict2 = iq_loss(agent, current_Q2, current_V, next_V, batch)
+        if cond_dim==-2:
+            current_Q1, current_Q2 = self.critic(obs, action, both=True)
+        else:
+            current_Q1, current_Q2 = self.critic((obs, action, cond), both=True)
+        q1_loss, loss_dict1 = iq_loss(agent, current_Q1, current_V, next_V, batch, cond_dim)
+        q2_loss, loss_dict2 = iq_loss(agent, current_Q2, current_V, next_V, batch, cond_dim)
         critic_loss = 1/2 * (q1_loss + q2_loss)
         # merge loss dicts
         loss_dict = average_dicts(loss_dict1, loss_dict2)
     else:
         # current_Q = self.critic(obs, action)
-        current_Q = self.critic((obs, action, cond))
-        critic_loss, loss_dict = iq_loss(agent, current_Q, current_V, next_V, batch)
+        if cond_dim==-2:
+            current_Q = self.critic(obs, action)
+        else:
+            current_Q = self.critic((obs, action, cond))
+        critic_loss, loss_dict = iq_loss(agent, current_Q, current_V, next_V, batch, cond_dim)
 
     logger.log('train/critic_loss', critic_loss, step)
 
@@ -361,11 +375,11 @@ def iq_update_critic(self, policy_batch, expert_batch, logger, step):
     return loss_dict
 
 
-def iq_update(self, policy_buffer, expert_buffer, logger, step):
+def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_dim):
     policy_batch = policy_buffer.get_samples(self.batch_size, self.device)
     expert_batch = expert_buffer.get_samples(self.batch_size, self.device)
 
-    losses = self.iq_update_critic(policy_batch, expert_batch, logger, step)
+    losses = self.iq_update_critic(policy_batch, expert_batch, logger, step, cond_dim)
 
     if self.actor and step % self.actor_update_frequency == 0:
         if not self.args.agent.vdice_actor:
@@ -387,7 +401,10 @@ def iq_update(self, policy_buffer, expert_buffer, logger, step):
             if self.args.num_actor_updates:
                 for i in range(self.args.num_actor_updates):
                     # actor_alpha_losses = self.update_actor_and_alpha(obs, logger, step)
-                    actor_alpha_losses = self.update_actor_and_alpha((obs,cond), logger, step)
+                    if cond_dim==-2:
+                        actor_alpha_losses = self.update_actor_and_alpha(obs, logger, step)
+                    else:
+                        actor_alpha_losses = self.update_actor_and_alpha((obs,cond), logger, step)
 
             losses.update(actor_alpha_losses)
 
