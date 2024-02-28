@@ -1,5 +1,29 @@
 # Inverse Q-Learning (IQ-Learn)
 
+## Custom training with/without conditions
+By changing the argument "cond_dim" and "random_index", the condition dimension and value can be changed according to the following rule:
+- without any condition: cond_dim=-2 random_index=-1
+- with condition whose value is an array containing -1: cond_dim=10 random_index=-1
+- with single condition with fixed index: cond_dim=10 random_index=0
+- with real conditions matching the expert demo: cond_dim=10 random_index=1
+An example command to perform iq-learn without cond:
+'''
+python train_iq.py env=cheetah agent=sac expert.demos=3 cond_dim=-2 random_index=-1 method.loss=value method.regularize=True agent.actor_lr=3e-05 seed=0 agent.init_temp=1e-2
+'''
+An example command to perform iq-learn with cond:
+'''
+python train_iq.py env=cheetah agent=sac expert.demos=3 cond_dim=10 random_index=1 method.loss=value method.regularize=True agent.actor_lr=3e-05 seed=0 agent.init_temp=1e-2
+'''
+## expert generation
+conf/env/cheetah_long.yaml is used typically for custom rollouts.
+- training a new expert: uncomment "use_baselines: True"
+- use the existing trained policy: comment "use_baselines: True" and replace the address in line 58 "path = "/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/sac_cheetah_old_1000000.zip""
+An example command to generate expert demos using current trained policy
+'''
+python expert_generation.py env=cheetah_long agent=sac method.loss=value method.regularize=True agent.actor_lr=3e-05 seed=0 agent.init_temp=0.01
+'''
+
+
 ## SOTA framework for non-adversarial Imitation Learning
 
 IQ-Learn enables very fast, scalable and stable imitation learning.
