@@ -211,6 +211,7 @@ def main(cfg: DictConfig):
 
 # random_index: 1 for real indexed, 0 for fixed index 0, -1 for [-1]*cond_dim
 def get_random_cond(cond_dim, random_index):
+    # TODO: (changyu) make the location an argument
     cond_location = "/home/zichang/proj/IQ-Learn/iq_learn/data/cheetah.pkl"
     if os.path.isfile(cond_location):
         # Load data from single file.

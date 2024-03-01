@@ -1,13 +1,15 @@
+import os
+import pickle
+import random
+from typing import IO, Any, Dict
+
 import numpy as np
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 from torch.autograd import Variable
 from torchvision.utils import make_grid, save_image
-from typing import IO, Any, Dict
-import pickle
-import os
-import random
+
 
 class eval_mode(object):
     def __init__(self, *models):
@@ -42,7 +44,8 @@ def evaluate(actor, env, num_episodes=10, vis=True, cond_dim=10, random_index=-1
         done = False
         terminated = False
         # cond = [-1]*cond_dim
-         # TODO: add conds for online memory replay
+        # TODO: add conds for online memory replay
+        # TODO: (changyu) we may want to use a fixed cond for evaluation
         cond = get_random_cond(cond_dim, random_index)
         with eval_mode(actor):
             while not done and not terminated:
