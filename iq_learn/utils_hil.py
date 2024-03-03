@@ -697,10 +697,11 @@ def miniworld_loader(batch_size):
 
 
 class CheetahDataset(Dataset):
-    def __init__(self, partition, seq_size=1000):
+    def __init__(self, partition, seq_size=1000,
+                 expert_file='/home/zichang/proj/IQ-Learn/iq_learn/experts/HalfCheetah-v2_25.pkl'):
         mycwd = os.getcwd()
         os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/")
-        dataset_paths = ['/home/zichang/proj/IQ-Learn/iq_learn/experts/HalfCheetah-v2_25.pkl']
+        dataset_paths = [expert_file]
         state = []
         action = []
         level = []
@@ -770,8 +771,8 @@ def cheetah_loader(batch_size, seq_size):
     )
     return train_loader, test_loader
 
-def cheetah_full_loader(batch_size):
-    full_dataset = CheetahDataset(partition="full")
+def cheetah_full_loader(batch_size, expert_file):
+    full_dataset = CheetahDataset(partition="full", expert_file=expert_file)
     full_loader = DataLoader(
         dataset=full_dataset, batch_size=batch_size, shuffle=False
     )

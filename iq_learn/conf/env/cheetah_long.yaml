@@ -2,7 +2,8 @@
 
 env:
   name: HalfCheetah-v3
-  demo: HalfCheetah-v3_5_2288r.pkl
+  demo: HalfCheetah-v3_10_Gemini_2k+6k.pkl
+  cond: cheetah_10_2k+6k.pkl
   # learn_steps: 1e5
   # eval_interval: 1e3
 
@@ -15,7 +16,7 @@ env:
   eval_interval: 5e3
 
 expert:
-  demos: 25
+  demos: 6
   subsample_freq: 1
 
 eval:

@@ -27,7 +27,7 @@ class eval_mode(object):
         return False
 
 
-def evaluate(actor, env, num_episodes=10, vis=True, cond_dim=10, random_index=-1):
+def evaluate(actor, env, cond_location, num_episodes=10, vis=True, cond_dim=10, random_index=-1, eval_index=0):
     """Evaluates the policy.
     Args:
       actor: A policy to evaluate.
@@ -46,7 +46,8 @@ def evaluate(actor, env, num_episodes=10, vis=True, cond_dim=10, random_index=-1
         # cond = [-1]*cond_dim
         # TODO: add conds for online memory replay
         # TODO: (changyu) we may want to use a fixed cond for evaluation
-        cond = get_random_cond(cond_dim, random_index)
+        # cond = get_random_cond(cond_dim, random_index)
+        cond = get_random_cond(cond_dim, 0, cond_location, eval_index=eval_index)
         with eval_mode(actor):
             while not done and not terminated:
                 if cond_dim==-2:
@@ -63,8 +64,7 @@ def evaluate(actor, env, num_episodes=10, vis=True, cond_dim=10, random_index=-1
     return total_returns, total_timesteps
 
 # random_index: 1 for real indexed, 0 for fixed index 0, -1 for [-1]*cond_dim
-def get_random_cond(cond_dim, random_index):
-    cond_location = "/home/zichang/proj/IQ-Learn/iq_learn/data/cheetah.pkl"
+def get_random_cond(cond_dim, random_index, cond_location, eval_index=0):
     if os.path.isfile(cond_location):
         # Load data from single file.
         with open(cond_location, 'rb') as f:
@@ -76,7 +76,7 @@ def get_random_cond(cond_dim, random_index):
         cond = conds[index][:cond_dim]
     elif random_index==0:
         # FIXME: remove fixed index
-        cond = conds[0][:cond_dim]
+        cond = conds[eval_index][:cond_dim]
     else:
         cond = [-1]*cond_dim
     return cond

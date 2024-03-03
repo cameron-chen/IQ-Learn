@@ -28,7 +28,8 @@ class ExpertDataset(Dataset):
                  subsample_frequency: int = 20,
                  seed: int = 0,
                  cond_dim: int = 10,
-                 random_index: int = -1):
+                 random_index: int = -1,
+                 cond_location: str = '/home/zichang/proj/IQ-Learn/iq_learn/cond/cheetah.pkl'):
         """Subsamples an expert dataset from saved expert trajectories.
 
         Args:
@@ -76,7 +77,6 @@ class ExpertDataset(Dataset):
 
             self.get_idx.append((traj_idx, i))
             i += 1
-        cond_location = "/home/zichang/proj/IQ-Learn/iq_learn/data/cheetah.pkl"
         print(f"--> Reading cond from {cond_location}")
         if os.path.isfile(cond_location):
             # Load data from single file.

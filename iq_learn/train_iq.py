@@ -96,7 +96,8 @@ def main(cfg: DictConfig):
                               sample_freq=args.expert.subsample_freq,
                               seed=args.seed + 42,
                               cond_dim=COND_DIM,
-                              random_index=RANDOM_INDEX)
+                              random_index=RANDOM_INDEX,
+                              cond_location=hydra.utils.to_absolute_path(f'cond/{args.env.cond}'))
     print(f'--> Expert memory size: {expert_memory_replay.size()}')
 
     online_memory_replay = Memory(REPLAY_MEMORY//2, args.seed+1)
@@ -134,7 +135,7 @@ def main(cfg: DictConfig):
         state = env.reset()
         episode_reward = 0
         done = False
-        cond = get_random_cond(COND_DIM, RANDOM_INDEX)
+        cond = get_random_cond(COND_DIM, RANDOM_INDEX, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'))
         start_time = time.time()
         for episode_step in range(EPISODE_STEPS): # n of steps
             if steps < args.num_seed_steps:
@@ -151,8 +152,10 @@ def main(cfg: DictConfig):
             steps += 1
 
             if learn_steps % args.env.eval_interval == 0:
-                eval_returns, eval_timesteps = evaluate(agent, eval_env, num_episodes=args.eval.eps, cond_dim=COND_DIM, random_index=RANDOM_INDEX)
-                returns = np.mean(eval_returns)
+                for eval_index in range(args.expert.demos):
+                    eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=COND_DIM, random_index=RANDOM_INDEX, eval_index=eval_index)
+                    returns = np.mean(eval_returns)
+                    logger.log(f'eval/episode_reward{eval_index}', returns, learn_steps)
                 learn_steps += 1  # To prevent repeated eval at timestep 0
                 logger.log('eval/episode_reward', returns, learn_steps)
                 logger.log('eval/episode', epoch, learn_steps)
@@ -210,9 +213,8 @@ def main(cfg: DictConfig):
         save(agent, epoch, args, output_dir='results')
 
 # random_index: 1 for real indexed, 0 for fixed index 0, -1 for [-1]*cond_dim
-def get_random_cond(cond_dim, random_index):
+def get_random_cond(cond_dim, random_index, cond_location):
     # TODO: (changyu) make the location an argument
-    cond_location = "/home/zichang/proj/IQ-Learn/iq_learn/data/cheetah.pkl"
     if os.path.isfile(cond_location):
         # Load data from single file.
         with open(cond_location, 'rb') as f:

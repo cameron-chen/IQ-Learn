@@ -7,24 +7,39 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import argparse
 
-with open('experts/HalfCheetah-v3_8.pkl', 'rb') as f:
-    data1 = pickle.load(f)
-with open('experts/HalfCheetah-v3_6_2327r.pkl', 'rb') as f:
-    data2 = pickle.load(f)
+def main():
+    # set up argparser and 
+    # read args of data1 and data2 path:
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument('data1', type=str, default='experts/HalfCheetah-v3_8.pkl')
+    arg_parser.add_argument('data2', type=str, default='experts/HalfCheetah-v3_6_2327r.pkl')
+    arg_parser.add_argument('segment_len', type=int, default=5)
+    arg_parser.add_argument('save_path', type=str, default='experts/HalfCheetah-v3_Gemini_2k+6k.pkl')
+    args = arg_parser.parse_args()
 
-# Step 2: combine the two files into one file
-# for each file, take three items out of each value list and combine them into a new list
-def combine_value(data1, data2):
-    new_data = {}
-    for key in data1.keys():
-        new_data[key] = []
-        new_data[key].extend(data1[key][:3])
-        new_data[key].extend(data2[key][:3])
-    return new_data
 
-combined_data = combine_value(data1, data2)
-# Step 3: save it in experts/ HalfCheetah-v3_Gemini.pkl
-with open('experts/HalfCheetah-v3_Gemini_2k+6k.pkl', 'wb') as f:
-    pickle.dump(combined_data, f)
 
+    with open(args.data1, 'rb') as f:
+        data1 = pickle.load(f)
+    with open(args.data2, 'rb') as f:
+        data2 = pickle.load(f)
+
+    # Step 2: combine the two files into one file
+    # for each file, take three items out of each value list and combine them into a new list
+    def combine_value(data1, data2):
+        new_data = {}
+        for key in data1.keys():
+            new_data[key] = []
+            new_data[key].extend(data1[key][:args.segment_len])
+            new_data[key].extend(data2[key][:args.segment_len])
+        return new_data
+
+    combined_data = combine_value(data1, data2)
+    # Step 3: save it in experts/ HalfCheetah-v3_Gemini.pkl
+    with open(args.save_path, 'wb') as f:
+        pickle.dump(combined_data, f)
+
+if __name__ == '__main__':
+    main()

@@ -77,7 +77,7 @@ def run_episode(env, policy, experience_observers=None, test=False,
         if done:
             return episode, renders
 
-def run_exp(config, datafile):
+def run_exp(config, expert_file, datafile):
     hssm = torch.load(config.get("checkpoint")).cpu()
     hssm._use_min_length_boundary_mask = True
     hssm.train()
@@ -86,7 +86,7 @@ def run_exp(config, datafile):
     
     if config.get("env") == "cheetah":
         # cus: no env
-        full_loader = utils_hil.cheetah_full_loader(1)
+        full_loader = utils_hil.cheetah_full_loader(1, expert_file)
         hssm.post_obs_state._output_normal = True
         hssm._output_normal = True
     elif config.get("env") == "humanoid":
@@ -331,6 +331,7 @@ def main():
     arg_parser.add_argument(
             "-s", "--seed", default=0, help="random seed to use.", type=int)
     arg_parser.add_argument("exp_name", help="name of the experiment to run")
+    arg_parser.add_argument("expert_file", help="full path of expert demo")
     arg_parser.add_argument("--obs-std", type=float, default=1.0)
     args = arg_parser.parse_args()
     config = cfg.Config.from_files_and_bindings(
@@ -356,7 +357,7 @@ def main():
             emb_list = pickle.load(f)
         print("Loaded previous data")
     else:
-        emb_list = run_exp(config, datafile)
+        emb_list = run_exp(config, args.expert_file, datafile)
         print("Saved data")
     
     LOGGER.info(">>> Num of skills in one traj: {}~{}, Average {}".format(min(emb_list["num_z"]), 
