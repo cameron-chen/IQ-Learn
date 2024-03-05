@@ -12,7 +12,7 @@ python train_iq.py env=cheetah agent=sac expert.demos=3 cond_dim=-2 random_index
 '''
 ### An example command to perform iq-learn with cond:
 '''
-python train_iq.py env=cheetah agent=sac expert.demos=3 cond_dim=10 random_index=1 method.loss=value method.regularize=True agent.actor_lr=3e-05 seed=0 agent.init_temp=1e-2
+python train_iq.py env=cheetah_long agent=sac expert.demos=10 cond_dim=10 random_index=1 method.loss=value method.regularize=True agent.actor_lr=3e-05 seed=0 agent.init_temp=1e-6
 '''
 ## Expert generation
 conf/env/cheetah_long.yaml is used typically for custom rollouts.
