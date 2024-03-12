@@ -27,7 +27,7 @@ class eval_mode(object):
         return False
 
 
-def evaluate(actor, env, cond_location, num_episodes=10, vis=True, cond_dim=10, random_index=-1, eval_index=0):
+def evaluate(actor, env, cond_location, num_episodes=10, vis=True, cond_dim=10, cond_type="random", eval_index=0):
     """Evaluates the policy.
     Args:
       actor: A policy to evaluate.
@@ -46,11 +46,11 @@ def evaluate(actor, env, cond_location, num_episodes=10, vis=True, cond_dim=10, 
         # cond = [-1]*cond_dim
         # TODO: add conds for online memory replay
         # TODO: (changyu) we may want to use a fixed cond for evaluation
-        # cond = get_random_cond(cond_dim, random_index)
-        cond = get_random_cond(cond_dim, 0, cond_location, eval_index=eval_index)
+        # cond = get_random_cond(cond_dim, cond_type)
+        cond = get_random_cond(cond_dim, cond_type, cond_location, eval_index=eval_index)
         with eval_mode(actor):
             while not done and not terminated:
-                if cond_dim==-2:
+                if cond_type=="none":
                     action = actor.choose_action(state, sample=False)
                 else:
                     action = actor.choose_action((state,cond), sample=False)
@@ -63,8 +63,8 @@ def evaluate(actor, env, cond_location, num_episodes=10, vis=True, cond_dim=10, 
 
     return total_returns, total_timesteps
 
-# random_index: 1 for real indexed, 0 for fixed index 0, -1 for [-1]*cond_dim
-def get_random_cond(cond_dim, random_index, cond_location, eval_index=0):
+# cond_type: 1 for real indexed, 0 for fixed index 0, -1 for [-1]*cond_dim
+def get_random_cond(cond_dim, cond_type, cond_location, eval_index=0):
     if os.path.isfile(cond_location):
         # Load data from single file.
         with open(cond_location, 'rb') as f:
@@ -72,13 +72,15 @@ def get_random_cond(cond_dim, random_index, cond_location, eval_index=0):
     conds = conds["emb"]
     # select random index from conds length
     index = random.randint(0, len(conds)-1)
-    if random_index>0:
+    if cond_type=="random":
         cond = conds[index][:cond_dim]
-    elif random_index==0:
-        # FIXME: remove fixed index
+    elif cond_type=="debug":
         cond = conds[eval_index][:cond_dim]
-    else:
+    elif cond_type=="none" or cond_type=="dummy":
         cond = [-1]*cond_dim
+    else:
+        # throw error that cond_type is not recognized
+        raise ValueError("cond_type is not recognized. Use 'random', 'debug', 'dummy', or 'none'")
     return cond
 
 def read_file(path: str, file_handle: IO[Any]) -> Dict[str, Any]:
@@ -174,12 +176,12 @@ def get_concat_samples(policy_batch, expert_batch, args):
         shape = online.shape
         expert = torch.reshape(expert, shape)
         return expert
-    
-    expert_batch_state = change_shape(online_batch_state, expert_batch_state)
-    expert_batch_next_state = change_shape(online_batch_next_state, expert_batch_next_state)
-    expert_batch_action = change_shape(online_batch_action, expert_batch_action)
-    expert_batch_reward = change_shape(online_batch_reward, expert_batch_reward)
-    expert_batch_done = change_shape(online_batch_done, expert_batch_done)
+    if args.cond_dim!=-2 and args.expert.demos!=1:
+        expert_batch_state = change_shape(online_batch_state, expert_batch_state)
+        expert_batch_next_state = change_shape(online_batch_next_state, expert_batch_next_state)
+        expert_batch_action = change_shape(online_batch_action, expert_batch_action)
+        expert_batch_reward = change_shape(online_batch_reward, expert_batch_reward)
+        expert_batch_done = change_shape(online_batch_done, expert_batch_done)
 
     batch_state = torch.cat([online_batch_state, expert_batch_state], dim=0)
     batch_next_state = torch.cat(

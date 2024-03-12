@@ -33,30 +33,36 @@ def main(cfg: DictConfig):
         # from baselines_zoo.baselines_expert import BaselinesExpert
         # agent = BaselinesExpert(args.env.name, folder='rl-trained-agents')
         # env = agent.env
-        from stable_baselines3 import SAC
-        agent = SAC(
-            "MlpPolicy", 
-            env=env,
-            verbose=1
-        )    
-        TRAIN_TIMESTEPS = 1000000
+        if args.agent=="sac":
+            print("--> Using SAC to train the model")
+            from stable_baselines3 import SAC
+            agent = SAC("MlpPolicy", env=env,verbose=1)
+        else:
+            print("--> Using PPO to train the model")
+            from stable_baselines3 import PPO
+            agent = PPO("MlpPolicy", env=env,verbose=1)
+        TRAIN_TIMESTEPS = 10000
         TOTAL_EPOCHS = 4
+        print(f"Env name : {args.env.name}")
         print("--> Training model, please expect a long training time")
         for i in range(TOTAL_EPOCHS):
             agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS)
-            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/sac_cheetah_v2_{(i+1)*TRAIN_TIMESTEPS}.zip'
+            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/cartpole_seals_{(i+1)*TRAIN_TIMESTEPS}.zip'
             agent.save(model_save_path)
             print(f"Saved model at step {(i+1)*TRAIN_TIMESTEPS} at location {model_save_path}")
         # agent.load_state_dict(torch.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/policy.pth"))
     else:
-        from stable_baselines3 import SAC
-        agent = SAC(
-            "MlpPolicy", 
-            env=env,
-            verbose=1
-        )
-        path = "/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/sac_cheetah_old_1000000.zip"
-        agent = SAC.load(path, env=env)
+        path = "/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/cartpole_seals_20000.zip"
+        if args.agent=="sac":
+            print("--> Using SAC to load the model")
+            from stable_baselines3 import SAC
+            agent = SAC("MlpPolicy", env=env,verbose=1)
+            agent = SAC.load(path, env=env)
+        else:
+            print("--> Using PPO to load the model")
+            from stable_baselines3 import PPO
+            agent = PPO("MlpPolicy", env=env,verbose=1)
+            agent = PPO.load(path, env=env)
         # agent = make_agent(env, args)
         # agent.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/actor.optimizer.pth",
         #        "/home/zichang/proj/IQ-Learn/iq_learn/iq.para/critic.optimizer.pth")
@@ -107,7 +113,7 @@ def main(cfg: DictConfig):
             episode_reward += reward
             if memory_replay.size() == REPLAY_MEMORY:
                 print('expert replay saved...')
-                memory_replay.save(f'experts/{args.env_name}_{args.expert.demos}_{int(episode_reward)}')
+                memory_replay.save(f'experts/{args.env.name}_{args.expert.demos}_{int(episode_reward)}')
                 exit()
 
             state = next_state
@@ -127,7 +133,7 @@ def main(cfg: DictConfig):
 
         
         # if (not REWARD_THRESHOLD or episode_reward >= REWARD_THRESHOLD) and (not use_success or score >= 1.):
-        if episode_reward.ndim == 1:
+        if args.agent=="sac" and episode_reward.ndim == 1:
             episode_reward = episode_reward[0]
         if (not REWARD_THRESHOLD or episode_reward >= REWARD_THRESHOLD):
             saved_eps += 1
@@ -144,6 +150,7 @@ def main(cfg: DictConfig):
             print('Ep {}\tSaving Episode reward: {:.2f}\t'.format(epoch, episode_reward))
         else:
             print('Ep {}\tSkipped episode with reward: {:.2f}\t'.format(epoch, episode_reward))
+        
 
     # for k, v in expert_trajs.items():
     #     expert_trajs[k] = np.array(v)
@@ -151,7 +158,8 @@ def main(cfg: DictConfig):
     get_data_stats(expert_trajs, np.array(expert_rewards), np.array(expert_lengths))
 
     print('Final size of Replay Buffer: {}'.format(sum(expert_trajs["lengths"])))
-    save_path = f'experts/{args.env_name}_{args.expert.demos}_{int(episode_reward)}r.pkl'
+    mean_reward = int(np.mean(expert_rewards))
+    save_path = f'experts/Cartpole-v0_{args.expert.demos}_{mean_reward}r.pkl'
     with open(hydra.utils.to_absolute_path(save_path), 'wb') as f:
         pickle.dump(expert_trajs, f)
     print(f'Expert traj saved in {save_path}')

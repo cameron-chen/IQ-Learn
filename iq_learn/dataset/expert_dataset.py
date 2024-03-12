@@ -28,7 +28,7 @@ class ExpertDataset(Dataset):
                  subsample_frequency: int = 20,
                  seed: int = 0,
                  cond_dim: int = 10,
-                 random_index: int = -1,
+                 cond_type: str = "random",
                  cond_location: str = '/home/zichang/proj/IQ-Learn/iq_learn/cond/cheetah.pkl'):
         """Subsamples an expert dataset from saved expert trajectories.
 
@@ -39,7 +39,7 @@ class ExpertDataset(Dataset):
             deterministic:            If true, sample determinstic expert trajectories.
         """
         self.cond_dim = cond_dim
-        self.random_index = random_index
+        self.cond_type = cond_type
         all_trajectories = load_trajectories(expert_location, num_trajectories, seed)
         self.trajectories = {}
 
@@ -93,8 +93,8 @@ class ExpertDataset(Dataset):
 
     def __getitem__(self, i):
         traj_idx, i = self.get_idx[i]
-        if self.random_index==0:
-            traj_idx = 0
+        # if self.cond_type=="fixed":
+        #     traj_idx = 0
         if traj_idx<=len(self.conds):
             cond = self.conds[traj_idx]
         else:
@@ -111,9 +111,9 @@ class ExpertDataset(Dataset):
         # cond = [-1]*self.cond_dim
         if len(cond)<self.cond_dim:
             raise ValueError(f"cond_dim {self.cond_dim}out of range, maximum cond length is {len(cond)}")
-        if self.cond_dim > 0 and self.random_index>=0:
+        if self.cond_dim > 0 and (self.cond_type=="random" or self.cond_type=="debug"):
             cond = cond[:self.cond_dim]
-        else:
+        elif self.cond_type=="none" or self.cond_type=="dummy":
             cond = [-1]*self.cond_dim
         return (states,
                 next_states,
@@ -144,7 +144,7 @@ def load_trajectories(expert_location: str,
         rng = np.random.RandomState(seed)
         # Sample random `num_trajectories` experts.
         perm = np.arange(len(trajs["states"]))
-        # perm = rng.permutation(perm) # FIXME: disable random permutation for now. Can be enabled if use the traj encoder. 
+        perm = rng.permutation(perm) # FIXME: disable random permutation for now. Can be enabled if use the traj encoder. 
         num_trajectories = min(num_trajectories, len(perm))
         idx = perm[:num_trajectories]
         for k, v in trajs.items():
