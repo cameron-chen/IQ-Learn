@@ -52,25 +52,29 @@ def main(cfg: DictConfig):
             print(f"Saved model at step {(i+1)*TRAIN_TIMESTEPS} at location {model_save_path}")
         # agent.load_state_dict(torch.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/policy.pth"))
     else:
-        path = "/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/cartpole_seals_20000.zip"
-        if args.agent=="sac":
+        if args.eval.policy:
+            expert_file = f'{args.eval.policy}'
+        print(f'Loading expert from: {expert_file}')
+        expert_file = hydra.utils.to_absolute_path(expert_file)
+        # path = "/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/cartpole_seals_30000.zip"
+        if args.agent.name=="sac":
             print("--> Using SAC to load the model")
             from stable_baselines3 import SAC
             agent = SAC("MlpPolicy", env=env,verbose=1)
-            agent = SAC.load(path, env=env)
+            agent = SAC.load(expert_file, env=env)
         else:
             print("--> Using PPO to load the model")
             from stable_baselines3 import PPO
             agent = PPO("MlpPolicy", env=env,verbose=1)
-            agent = PPO.load(path, env=env)
+            agent = PPO.load(expert_file, env=env)
         # agent = make_agent(env, args)
         # agent.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/actor.optimizer.pth",
         #        "/home/zichang/proj/IQ-Learn/iq_learn/iq.para/critic.optimizer.pth")
 
-    expert_file = f'{args.method.type}.para'
-    if args.eval.policy:
-        expert_file = f'{args.eval.policy}'
-    print(f'Loading expert from: {expert_file}')
+    # expert_file = f'{args.method.type}.para'
+    # if args.eval.policy:
+    #     expert_file = f'{args.eval.policy}'
+    # print(f'Loading expert from: {expert_file}')
 
     # agent.load(hydra.utils.to_absolute_path(expert_file), f'_{args.env.name}')
     
@@ -135,7 +139,7 @@ def main(cfg: DictConfig):
         # if (not REWARD_THRESHOLD or episode_reward >= REWARD_THRESHOLD) and (not use_success or score >= 1.):
         if args.agent=="sac" and episode_reward.ndim == 1:
             episode_reward = episode_reward[0]
-        if (not REWARD_THRESHOLD or episode_reward >= REWARD_THRESHOLD):
+        if (not REWARD_THRESHOLD or episode_reward >= REWARD_THRESHOLD) and episode_reward <= 500:
             saved_eps += 1
             states, next_states, actions, rewards, dones = zip(*traj)
 
@@ -159,7 +163,7 @@ def main(cfg: DictConfig):
 
     print('Final size of Replay Buffer: {}'.format(sum(expert_trajs["lengths"])))
     mean_reward = int(np.mean(expert_rewards))
-    save_path = f'experts/Cartpole-v0_{args.expert.demos}_{mean_reward}r.pkl'
+    save_path = f'experts/{args.env.name.replace("/","")}_{args.expert.demos}_{mean_reward}r.pkl'
     with open(hydra.utils.to_absolute_path(save_path), 'wb') as f:
         pickle.dump(expert_trajs, f)
     print(f'Expert traj saved in {save_path}')

@@ -6,15 +6,25 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-with open('experts/HalfCheetah-v3_9.pkl', 'rb') as f:
-    data = pickle.load(f)
-# with open('experts/HalfCheetah-v2_25.pkl', 'rb') as f:
+# with open('experts/HalfCheetah-v3_20_Gemini_2k+6k.pkl', 'rb') as f:
 #     data = pickle.load(f)
+# # with open('experts/HalfCheetah-v2_25.pkl', 'rb') as f:
+# #     data = pickle.load(f)
 
-# read rewards and calculate average return
-returns = data["rewards"]
-print('len', len(returns))
-print('value', sum(returns[0]))
+# # read rewards and calculate average return
+# returns = [sum(i) for i in data["rewards"][10:]]
+# print('len', len(returns))
+# print(f"max mean min: {max(returns)} {np.mean(returns)} {min(returns)}")
+
+with open('cond/cheetah_20_dummy.pkl', 'rb') as f:
+    data = pickle.load(f)
+
+emb = data['emb']
+print('len', len(emb))
+print('shape', emb[0].shape)
+print(f"value: {emb[0]}")
+
+
 # print(f"value: {returns[0]}")
 
 # states = data["states"]
