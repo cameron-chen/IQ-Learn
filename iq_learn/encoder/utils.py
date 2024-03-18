@@ -863,10 +863,12 @@ def cheetah_full_loader(batch_size, expert_file):
 
 class CartpoleDataset(Dataset):
     def __init__(self, partition, seq_size=500,
-                expert_file="/home/zichang/proj/IQ-Learn/iq_learn/experts/Cartpole-v0_10_Gemini_400+500.pkl"):
+                expert_file="/home/zichang/proj/IQ-Learn/iq_learn/experts/Cartpole-v0_25_500r.pkl"):
         mycwd = os.getcwd()
         os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
-        dataset_paths = [expert_file]
+        # split expert_file by "," and make it an array to dataset_paths
+        dataset_paths = expert_file.split(",")
+        # dataset_paths = [expert_file]
         state = []
         action = []
         level = []

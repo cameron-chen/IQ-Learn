@@ -82,7 +82,7 @@ def run_episode(env, policy, experience_observers=None, test=False,
 def run_exp(config, expert_file, datafile):
     hssm = torch.load(config.get("checkpoint")).cpu()
     hssm._use_min_length_boundary_mask = True
-    hssm.train()
+    hssm.eval()
     print("Model Loaded")
 
     
@@ -104,6 +104,7 @@ def run_exp(config, expert_file, datafile):
     init_size = 1
     b_idx = 0
     emb_list = {"num_m":[],"emb": [], "level":[], "num_z":[], "z":[]}
+    count = 0
     for obs_list, action_list, level_list in tqdm(full_loader):
         # obs_list 100 1000 17
         # action_list 100 1000 6
@@ -131,6 +132,16 @@ def run_exp(config, expert_file, datafile):
         # # save the plot
         # plt.savefig('first_dimension.png')
 
+        ## --> Use dummy value to replace the embedding
+        # if count<=9:
+        #     dummy_value = -1
+        # else:
+        #     dummy_value = 1
+        # count += 1
+        # # create dummy which is the same shape as result[-3] and the values are dummy_value
+        # dummy = [[dummy_value for i in range(len(j))] for j in results[-3]]
+        # emb_list["emb"].extend(dummy)
+
         emb_list["num_m"].extend([len(i) for i in results[-4]])
         emb_list["emb"].extend(results[-3])
         emb_list["level"].extend(level_list)
@@ -144,7 +155,7 @@ def run_exp(config, expert_file, datafile):
         
     return emb_list
 
-def clustering_report(emb_list, logname, n_features = 3):
+def clustering_report(emb_list, exp_name, logname, n_features):
     # compare traj embeddings
     # option 1. k_means num_clusters = n_proficiency_levels
     # expected the same level in the same cluster
@@ -173,7 +184,7 @@ def clustering_report(emb_list, logname, n_features = 3):
         pyplot.scatter(X[row_ix, 0], X[row_ix, 1])
     # show the plot
     pyplot.show()
-    pyplot.savefig('halfcheetah.png')
+    pyplot.savefig(f'plot/{exp_name}_kmeans.png')
     # calculate the ratio
     ratio = [[0 for i in range(n_features)] for i in range(n_features)]
     for index, cluster in enumerate(yhat):
@@ -193,7 +204,7 @@ def clustering_report(emb_list, logname, n_features = 3):
     LOGGER.info("#" * 80)
     print("Log saved at {}".format(logname))
 
-def pca(emb_list, exp_name):
+def pca(emb_list, exp_name, n_features):
     from sklearn.decomposition import PCA
     import pandas as pd
     import matplotlib.pyplot as plt
@@ -218,7 +229,7 @@ def pca(emb_list, exp_name):
     plt.yticks(fontsize=14)
     plt.xlabel('Principal Component - 1',fontsize=20)
     plt.ylabel('Principal Component - 2',fontsize=20)
-    plt.title("Principal Component Analysis of HalfCheetah Traj Dataset",fontsize=20)
+    plt.title(f"Principal Component Analysis of {exp_name} Dataset",fontsize=20)
     targets = [0, 1, 2]
     colors = ['r', 'g', 'b']
     finalDf = pd.concat([principal_Df, pd.Series(emb_list['level'], name='level')], axis = 1)
@@ -297,7 +308,7 @@ def render_skills(config, emb_list, exp_name):
                 start_index = current_index
     print("{} videos saved at ./videos".format(success))
 
-def tSNE(emb_list, exp_name):
+def tSNE(emb_list, exp_name, n_features):
     import numpy as np
     from sklearn.manifold import TSNE
     import matplotlib.pyplot as plt
@@ -314,7 +325,7 @@ def tSNE(emb_list, exp_name):
     plt.yticks(fontsize=14)
     plt.xlabel('Component - 1',fontsize=20)
     plt.ylabel('Component - 2',fontsize=20)
-    plt.title("tSNE of HalfCheetah Traj Dataset",fontsize=20)
+    plt.title(f"tSNE of {exp_name} Dataset",fontsize=20)
     targets = [0, 1, 2]
     colors = ['r', 'g', 'b']
     finalDf = pd.concat([principal_Df, pd.Series(emb_list['level'], name='level')], axis = 1)
@@ -352,6 +363,7 @@ def main():
     arg_parser.add_argument("expert_file", help="full path of expert demo")
     arg_parser.add_argument("--obs-std", type=float, default=1.0)
     arg_parser.add_argument("--batchsize", type=int, default=8)
+    arg_parser.add_argument("--n_features", type=int, default=3)
     args = arg_parser.parse_args()
     config = cfg.Config.from_files_and_bindings(
             args.configs, args.config_bindings)
@@ -387,14 +399,14 @@ def main():
                                                                       sum(emb_list["num_m"])/len(emb_list["num_m"])))
     # collect traj embeddings
     # step 1: dict of {embedding, proficiency_level}
-    clustering_report(emb_list, logname)
+    clustering_report(emb_list, args.exp_name, logname, args.n_features)
 
     # step 2: PCA principle component analysis
     # draw a figure, different colors for different proficiency levels   
-    pca(emb_list, args.exp_name) 
+    pca(emb_list, args.exp_name, args.n_features) 
 
     # step 3: tSNE
-    tSNE(emb_list, args.exp_name)
+    tSNE(emb_list, args.exp_name, args.n_features)
 
     # step 4: render one trajectory
     # render_skills(config, emb_list, args.exp_name)
