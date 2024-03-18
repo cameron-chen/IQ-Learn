@@ -40,7 +40,7 @@ class ExpertDataset(Dataset):
         """
         self.cond_dim = cond_dim
         self.cond_type = cond_type
-        all_trajectories = load_trajectories(expert_location, num_trajectories, seed)
+        all_trajectories, perm = load_trajectories(expert_location, num_trajectories, seed)
         self.trajectories = {}
 
         # Randomize start index of each trajectory for subsampling
@@ -83,8 +83,12 @@ class ExpertDataset(Dataset):
             with open(cond_location, 'rb') as f:
                 conds = read_file(cond_location, f)
         self.conds = conds["emb"][:num_trajectories]
-        print("conds length: ", len(self.conds))
-        print("trajectories length: ", len(self.trajectories["states"]))
+        # print("conds length: ", len(self.conds))
+        # print("trajectories length: ", len(self.trajectories["states"]))
+        # apply permutation to cond
+        # print("perm:",perm)
+        self.conds = [self.conds[i] for i in perm]
+        # print("permuted condss:",self.conds)
         assert len(self.conds)==len(self.trajectories["states"])
 
     def __len__(self) -> int:
@@ -154,7 +158,7 @@ def load_trajectories(expert_location: str,
 
     else:
         raise ValueError(f"{expert_location} is not a valid path")
-    return trajs
+    return trajs, perm
 
 
 def read_file(path: str, file_handle: IO[Any]) -> Dict[str, Any]:

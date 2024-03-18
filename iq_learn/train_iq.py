@@ -52,7 +52,7 @@ def get_args(cfg: DictConfig):
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig):
     args = get_args(cfg)
-    # wandb.init(project="hil_iq", sync_tensorboard=True, reinit=True, config=args)
+    wandb.init(project="hil_iq", sync_tensorboard=True, reinit=True, config=args, name=f"{args.env.cond} expert{args.expert.demos} temp{args.agent.init_temp} {args.method.loss}")
     # set seeds
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -375,7 +375,6 @@ def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_type):
         else:
             current_Q = self.critic((obs, action, cond))
         critic_loss, loss_dict = iq_loss(agent, current_Q, current_V, next_V, batch, cond_type)
-
     logger.log('train/critic_loss', critic_loss, step)
 
     # Optimize the critic
