@@ -14,3 +14,5 @@ method:
   alpha: 0.5
   lambda_gp: 10
   mix_coeff: 1
+  bc_init: False
+  enable_bc_critic_update: False

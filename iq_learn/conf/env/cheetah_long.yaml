@@ -29,6 +29,7 @@ agent:
 
 log_interval: 500  # Log every this many steps
 num_actor_updates: 1
+bc_steps: 1000
 
 train:
   use_target: true
