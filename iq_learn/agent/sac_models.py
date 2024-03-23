@@ -257,6 +257,9 @@ class SquashedNormal(pyd.transformed_distribution.TransformedDistribution):
         for tr in self.transforms:
             mu = tr(mu)
         return mu
+    
+    def entropy(self):
+        return self.base_dist.entropy()
 
 
 class DiagGaussianActor(nn.Module):

@@ -195,6 +195,12 @@ class SAC(object):
             })
         return losses
 
+    def evaluate_actions(self, obs, action):
+        dist = self.actor(obs)
+        log_prob = dist.log_prob(action).sum(dim=-1, keepdim=True)
+        entropy = dist.entropy().sum(dim=-1, keepdim=True)
+        return dist, log_prob, entropy
+
     # Save model parameters
     def save(self, path, suffix=""):
         actor_path = f"{path}{suffix}_actor"

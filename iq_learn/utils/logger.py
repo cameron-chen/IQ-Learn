@@ -114,7 +114,7 @@ class MetersGroup(object):
         if save:
             data = self._prime_meters()
             data['step'] = step
-            self._dump_to_csv(data)
+            # self._dump_to_csv(data) # FIXME: conflict in bc init and train
             self._dump_to_console(data, prefix)
         self._meters.clear()
 

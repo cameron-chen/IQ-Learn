@@ -6,11 +6,13 @@ Example training code for IQ-Learn which minimially modifies `train_rl.py`.
 
 import datetime
 import os
+import pickle
 import random
 import time
 import types
 from collections import deque
 from itertools import count
+from typing import IO, Any, Dict
 
 import hydra
 import numpy as np
@@ -23,20 +25,17 @@ from tensorboardX import SummaryWriter
 from agent import make_agent
 from dataset.memory import Memory
 from iq import iq_loss
+from bc import BehaviorCloningLossCalculator
 from make_envs import make_env
 from utils.logger import Logger
-from utils.utils import (average_dicts, eval_mode, evaluate,
-                         get_concat_samples, hard_update, soft_update)
-from wrappers.atari_wrapper import LazyFrames
-import types
-from dataset.memory import Memory
-from make_envs import make_env
-from utils.logger import Logger
-from utils.utils import (average_dicts, eval_mode, evaluate,
-                         get_concat_samples, hard_update, soft_update)
-from wrappers.atari_wrapper import LazyFrames
-from typing import IO, Any, Dict
-import pickle
+from utils.utils import (
+    average_dicts,
+    eval_mode,
+    evaluate,
+    get_concat_samples,
+    hard_update,
+    soft_update,
+)
 
 torch.set_num_threads(2)
 
@@ -131,6 +130,40 @@ def main(cfg: DictConfig):
     #     print("lazy frames detected")
     # state_0 = torch.FloatTensor(np.array(state_0,dtype=np.float32)).to(args.device)
 
+    # BC initialization
+    if args.method.bc_init:
+        agent.bc_update = types.MethodType(bc_update, agent)
+        agent.loss_calculator = BehaviorCloningLossCalculator(
+            ent_weight=1e-3, #args.method.bc_ent_weight,
+            l2_weight=0.0, #args.method.bc_l2_weight,
+        )
+
+        for learn_steps_bc in count(): 
+            expert_batch = expert_memory_replay.get_samples(agent.batch_size, agent.device)
+            expert_obs, _, expert_action, __, ___, expert_cond = expert_batch
+            losses = agent.bc_update(expert_obs, expert_action, expert_cond, logger, learn_steps_bc, COND_DIM)
+
+            # log losses
+            if learn_steps_bc % 10 ==0: #args.log_interval == 0:
+                for key, loss in losses.items():
+                    writer.add_scalar(key, loss, global_step=learn_steps_bc)
+                
+                logger.dump(learn_steps_bc)
+            
+            # eval every n steps
+            if learn_steps_bc % 100 == 0: #args.env.eval_interval == 0:
+                for eval_index in range(args.expert.demos):
+                    eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=COND_DIM, random_index=RANDOM_INDEX, eval_index=eval_index)
+                    returns = np.mean(eval_returns)
+                    logger.log(f'eval/bc_episode_reward{eval_index}', returns, learn_steps_bc)
+                # logger.log('eval/bc_episode_reward', returns, learn_steps_bc)
+                logger.dump(learn_steps_bc, ty='eval')
+
+            if learn_steps_bc == args.bc_steps:
+                learn_steps_bc +=1
+                print('Finished BC!')
+                break
+
     for epoch in count(): # n of episodes
         state = env.reset()
         episode_reward = 0
@@ -152,11 +185,11 @@ def main(cfg: DictConfig):
             steps += 1
 
             if learn_steps % args.env.eval_interval == 0:
+                learn_steps += 1  # To prevent repeated eval at timestep 0
                 for eval_index in range(args.expert.demos):
                     eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=COND_DIM, random_index=RANDOM_INDEX, eval_index=eval_index)
                     returns = np.mean(eval_returns)
                     logger.log(f'eval/episode_reward{eval_index}', returns, learn_steps)
-                learn_steps += 1  # To prevent repeated eval at timestep 0
                 logger.log('eval/episode_reward', returns, learn_steps)
                 logger.log('eval/episode', epoch, learn_steps)
                 logger.dump(learn_steps, ty='eval')
@@ -418,6 +451,53 @@ def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_dim):
         else:
             hard_update(self.critic_net, self.critic_target_net)
     return losses
+
+def bc_update(self, observation, action, condition, logger, step, cond_dim): 
+
+    # SAC version
+    if self.actor:
+        if cond_dim==-2:
+            training_metrics = self.loss_calculator(self, observation, action)
+        else:
+            training_metrics = self.loss_calculator(self, (observation, condition), action)
+    
+        loss = training_metrics['loss/bc_actor']
+
+        # optimize actor
+        self.actor_optimizer.zero_grad()
+        loss.backward()
+        self.actor_optimizer.step()
+
+        # update critic 
+        # if step % self.actor_update_frequency == 0:
+        #     if cond_dim==-2:
+        #         critic_losses = self.bc_update_critic(observation, logger, step)
+        #     else:
+        #         critic_losses = self.bc_update_critic((observation, condition), logger, step)
+
+        #     training_metrics.update(critic_losses)
+        
+        # log
+        for key, loss in training_metrics.items():
+            if 'bc_' in key.split('/')[1]: 
+                _key = f"train/{key.split('/')[1]}"
+            else:
+                _key = f"train/bc_{key.split('/')[1]}"
+            logger.log(_key, loss, step)
+    
+    # Q-Learning version
+    else: 
+        raise NotImplementedError("q learning loop has yet implemented")
+
+    # if step % self.critic_target_update_frequency == 0:
+    #     if self.args.train.soft_update:
+    #         soft_update(self.critic_net, self.critic_target_net,
+    #                     self.critic_tau)
+    #     else:
+    #         hard_update(self.critic_net, self.critic_target_net)
+
+    return training_metrics
+
 
 if __name__ == "__main__":
     main()
