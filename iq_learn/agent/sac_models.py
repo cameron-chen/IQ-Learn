@@ -306,7 +306,7 @@ class CondDoubleQCritic(DoubleQCritic):
         # self.cond_layer = nn.Linear(cond_dim, obs_dim+action_dim)
         if cond_dim>0:
             # cond version
-            print('--> Using Conditional Version CondDoubleQCritic')
+            # print('--> Using Conditional Version CondDoubleQCritic')
             self.v_cond = True
             super().__init__(obs_dim+cond_dim, action_dim+cond_dim, hidden_dim, hidden_depth, args)
         else:
@@ -345,7 +345,7 @@ class CondDiagGaussianActor(DiagGaussianActor):
         # FIXME: concatenation version, concat(obs, cond)
         if cond_dim>0:
             # cond version
-            print('--> Using Conditional Version CondDiagGaussianActor')
+            # print('--> Using Conditional Version CondDiagGaussianActor')
             self.v_cond = True
             super().__init__(obs_dim+cond_dim, action_dim, hidden_dim, hidden_depth,
                  log_std_bounds)

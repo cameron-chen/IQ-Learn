@@ -8,10 +8,18 @@ from agent.softq import SoftQ
 def make_agent(env, args):
     obs_dim = env.observation_space.shape[0]
     cond_dim = args.cond_dim
+    cond_type = args.cond_type
 
     if isinstance(env.action_space, gym.spaces.discrete.Discrete):
         print('--> Using Soft-Q agent')
         action_dim = env.action_space.n
+        if cond_type!="none":
+            # change the q_net to the conditional version
+            print('--> Using conditional Soft-Q agent')
+            OmegaConf.set_struct(args, False)
+            args.q_net._target_ = 'agent.softq_models.CondOfflineQNetwork'
+            args.q_net.cond_dim = cond_dim
+            OmegaConf.set_struct(args, True)
         # TODO: Simplify logic
         args.agent.obs_dim = obs_dim
         args.agent.action_dim = action_dim
@@ -23,7 +31,7 @@ def make_agent(env, args):
             float(env.action_space.low.min()),
             float(env.action_space.high.max())
         ]
-        if cond_dim is not None and cond_dim >= -1:
+        if cond_type!="none":
             # change the actor/critic to the conditional version
             print('--> Using conditional SAC agent')
             OmegaConf.set_struct(args, False) # allow dynamic attribute assignment

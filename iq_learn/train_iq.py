@@ -51,9 +51,7 @@ def get_args(cfg: DictConfig):
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig):
     args = get_args(cfg)
-    wandb.init(project="hil_iq", sync_tensorboard=True, reinit=True, config=args)
-    COND_DIM = args.cond_dim
-    RANDOM_INDEX = args.random_index
+    wandb.init(project="hil_iq", sync_tensorboard=True, reinit=True, config=args, name=f"{args.env.cond} expert{args.expert.demos} temp{args.agent.init_temp} {args.method.loss}")
     # set seeds
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -69,8 +67,8 @@ def main(cfg: DictConfig):
     eval_env = make_env(args)
 
     # Seed envs
-    # env.seed(args.seed) # TODO: uncomment this to enable seed on gym
-    # eval_env.seed(args.seed + 10)
+    env.seed(args.seed) # TODO: uncomment this to enable seed on gym
+    eval_env.seed(args.seed + 10)
 
     REPLAY_MEMORY = int(env_args.replay_mem)
     INITIAL_MEMORY = int(env_args.initial_mem)
@@ -94,8 +92,8 @@ def main(cfg: DictConfig):
                               num_trajs=args.expert.demos,
                               sample_freq=args.expert.subsample_freq,
                               seed=args.seed + 42,
-                              cond_dim=COND_DIM,
-                              random_index=RANDOM_INDEX,
+                              cond_dim=args.cond_dim,
+                              cond_type=args.cond_type,
                               cond_location=hydra.utils.to_absolute_path(f'cond/{args.env.cond}'))
     print(f'--> Expert memory size: {expert_memory_replay.size()}')
 
@@ -168,7 +166,7 @@ def main(cfg: DictConfig):
         state = env.reset()
         episode_reward = 0
         done = False
-        cond = get_random_cond(COND_DIM, RANDOM_INDEX, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'))
+        cond = get_random_cond(args.cond_dim, args.cond_type, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'))
         start_time = time.time()
         for episode_step in range(EPISODE_STEPS): # n of steps
             if steps < args.num_seed_steps:
@@ -176,7 +174,7 @@ def main(cfg: DictConfig):
                 action = env.action_space.sample()
             else:
                 with eval_mode(agent):
-                    if COND_DIM==-2:
+                    if args.cond_type=="none":
                         action = agent.choose_action(state, sample=True)
                     else:
                         action = agent.choose_action((state, cond), sample=True)
@@ -185,12 +183,16 @@ def main(cfg: DictConfig):
             steps += 1
 
             if learn_steps % args.env.eval_interval == 0:
-                learn_steps += 1  # To prevent repeated eval at timestep 0
-                for eval_index in range(args.expert.demos):
-                    eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=COND_DIM, random_index=RANDOM_INDEX, eval_index=eval_index)
+                if args.cond_type=="debug":
+                    for eval_index in range(args.expert.demos):
+                        eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index)
+                        returns = np.mean(eval_returns)
+                        logger.log(f'eval/episode_reward{eval_index}', returns, learn_steps)
+                else:
+                    eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type)
                     returns = np.mean(eval_returns)
-                    logger.log(f'eval/episode_reward{eval_index}', returns, learn_steps)
-                logger.log('eval/episode_reward', returns, learn_steps)
+                    logger.log('eval/episode_reward', returns, learn_steps)
+                learn_steps += 1  # To prevent repeated eval at timestep 0
                 logger.log('eval/episode', epoch, learn_steps)
                 logger.dump(learn_steps, ty='eval')
                 # print('EVAL\tEp {}\tAverage reward: {:.2f}\t'.format(epoch, returns))
@@ -206,8 +208,9 @@ def main(cfg: DictConfig):
             done_no_lim = done
             if str(env.__class__.__name__).find('TimeLimit') >= 0 and episode_step + 1 == env._max_episode_steps:
                 done_no_lim = 0
-            if type(state) == np.ndarray:
-                online_memory_replay.add((state, next_state, action, reward, done_no_lim, cond))
+            # if type(state) == np.ndarray:
+                # online_memory_replay.add((state, next_state, action, reward, done_no_lim, cond))
+            online_memory_replay.add((state, next_state, action, reward, done_no_lim, cond))
 
             if online_memory_replay.size() > INITIAL_MEMORY:
                 # Start learning
@@ -226,7 +229,7 @@ def main(cfg: DictConfig):
                 agent.iq_update = types.MethodType(iq_update, agent)
                 agent.iq_update_critic = types.MethodType(iq_update_critic, agent)
                 losses = agent.iq_update(online_memory_replay,
-                                         expert_memory_replay, logger, learn_steps, COND_DIM)
+                                         expert_memory_replay, logger, learn_steps, args.cond_type)
                 ######
 
                 if learn_steps % args.log_interval == 0:
@@ -245,9 +248,8 @@ def main(cfg: DictConfig):
         # print('TRAIN\tEp {}\tAverage reward: {:.2f}\t'.format(epoch, np.mean(rewards_window)))
         save(agent, epoch, args, output_dir='results')
 
-# random_index: 1 for real indexed, 0 for fixed index 0, -1 for [-1]*cond_dim
-def get_random_cond(cond_dim, random_index, cond_location):
-    # TODO: (changyu) make the location an argument
+# cond_type: 1 for real indexed, 0 for fixed index 0, -1 for [-1]*cond_dim
+def get_random_cond(cond_dim, cond_type, cond_location):
     if os.path.isfile(cond_location):
         # Load data from single file.
         with open(cond_location, 'rb') as f:
@@ -255,13 +257,13 @@ def get_random_cond(cond_dim, random_index, cond_location):
     conds = conds["emb"]
     # select random index from conds length
     index = random.randint(0, len(conds)-1)
-    if random_index>0:
+    if cond_type=="random" or cond_type=="debug" :
         cond = conds[index][:cond_dim]
-    elif random_index==0:
-        # FIXME: remove fixed index
-        cond = conds[0][:cond_dim]
-    else:
+    elif cond_type=="none" or cond_type=="dummy":
         cond = [-1]*cond_dim
+    else:
+        # throw error that cond_type is not recognized
+        raise ValueError("cond_type is not recognized. Use 'random', 'debug', 'dummy', or 'none'")
     return cond
 
 def read_file(path: str, file_handle: IO[Any]) -> Dict[str, Any]:
@@ -348,7 +350,7 @@ def iq_learn_update(self, policy_batch, expert_batch, logger, step):
     return loss
 
 
-def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_dim):
+def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_type):
     args = self.args
     # policy_obs, policy_next_obs, policy_action, policy_reward, policy_done = policy_batch
     # expert_obs, expert_next_obs, expert_action, expert_reward, expert_done = expert_batch
@@ -367,40 +369,45 @@ def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_dim):
 
     agent = self
     # current_V = self.getV(obs)
-    if cond_dim==-2:
+    if cond_type=="none":
         current_V = self.getV(obs)
     else:
         current_V = self.getV((obs, cond))
     if args.train.use_target:
         with torch.no_grad():
             # next_V = self.get_targetV(next_obs)
-            if cond_dim==-2:
+            if cond_type=="none":
                 next_V = self.get_targetV(next_obs)
             else:
                 next_V = self.get_targetV((next_obs, cond))
     else:
         # next_V = self.getV(next_obs)
-        next_V = self.getV((next_obs, cond))
+        if cond_type=="none":
+                next_V = self.get_targetV(next_obs)
+        else:
+            next_V = self.get_targetV((next_obs, cond))
+        # next_V = self.getV((next_obs, cond))
 
     if "DoubleQ" in self.args.q_net._target_:
         # current_Q1, current_Q2 = self.critic(obs, action, both=True)
-        if cond_dim==-2:
+        if cond_type=="none":
             current_Q1, current_Q2 = self.critic(obs, action, both=True)
         else:
             current_Q1, current_Q2 = self.critic((obs, action, cond), both=True)
-        q1_loss, loss_dict1 = iq_loss(agent, current_Q1, current_V, next_V, batch, cond_dim)
-        q2_loss, loss_dict2 = iq_loss(agent, current_Q2, current_V, next_V, batch, cond_dim)
+        q1_loss, loss_dict1 = iq_loss(agent, current_Q1, current_V, next_V, batch, cond_type)
+        q2_loss, loss_dict2 = iq_loss(agent, current_Q2, current_V, next_V, batch, cond_type)
         critic_loss = 1/2 * (q1_loss + q2_loss)
         # merge loss dicts
         loss_dict = average_dicts(loss_dict1, loss_dict2)
     else:
         # current_Q = self.critic(obs, action)
-        if cond_dim==-2:
+        if cond_type=="none":
             current_Q = self.critic(obs, action)
+        elif args.agent.name=="softq":
+            current_Q = self.critic((obs, cond), action)
         else:
             current_Q = self.critic((obs, action, cond))
-        critic_loss, loss_dict = iq_loss(agent, current_Q, current_V, next_V, batch, cond_dim)
-
+        critic_loss, loss_dict = iq_loss(agent, current_Q, current_V, next_V, batch, cond_type)
     logger.log('train/critic_loss', critic_loss, step)
 
     # Optimize the critic
@@ -411,11 +418,11 @@ def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_dim):
     return loss_dict
 
 
-def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_dim):
+def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_type):
     policy_batch = policy_buffer.get_samples(self.batch_size, self.device)
     expert_batch = expert_buffer.get_samples(self.batch_size, self.device)
 
-    losses = self.iq_update_critic(policy_batch, expert_batch, logger, step, cond_dim)
+    losses = self.iq_update_critic(policy_batch, expert_batch, logger, step, cond_type)
 
     if self.actor and step % self.actor_update_frequency == 0:
         if not self.args.agent.vdice_actor:
@@ -427,17 +434,17 @@ def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_dim):
             
             expert_item = change_shape(policy_batch[0], expert_batch[0])
             if self.args.offline:
-                obs = expert_item
+                obs = expert_batch[0]
                 cond = expert_batch[-1]
             else:
                 # Use both policy and expert observations
-                obs = torch.cat([policy_batch[0], expert_item], dim=0)
+                obs = torch.cat([policy_batch[0], expert_batch[0]], dim=0)
                 cond = torch.cat([policy_batch[-1], expert_batch[-1]], dim=0)
 
             if self.args.num_actor_updates:
                 for i in range(self.args.num_actor_updates):
                     # actor_alpha_losses = self.update_actor_and_alpha(obs, logger, step)
-                    if cond_dim==-2:
+                    if cond_type=="none":
                         actor_alpha_losses = self.update_actor_and_alpha(obs, logger, step)
                     else:
                         actor_alpha_losses = self.update_actor_and_alpha((obs,cond), logger, step)

@@ -41,9 +41,18 @@ def main():
                 if key not in new_data:
                     new_data[key] = []
                 new_data[key].extend(data[i][key][:args.segment_len])
+                ## --> Use fixed single index
+                # index = 1
+                # new_data[key].append(data[i][key][index])
+                # if key == 'rewards':
+                #   print(f"Reward of {index} segments {sum(data[i][key][index])}")
+                if key == 'rewards':
+                    for index in range(args.segment_len):
+                        print(f"Reward of {index} segments {sum(data[i][key][index])}")
+                    
         return new_data
 
-    print(f"Combining data from {args.data_list}")
+    print(f"Combining data from {args.data_list}, segment length {args.segment_len}, total length {args.segment_len*len(args.data_list)}")
     combined_data = combine_value(data)
     # Step 3: save it in experts/ HalfCheetah-v3_Gemini.pkl
     print(f"Saving combined data to {args.save_path}")
