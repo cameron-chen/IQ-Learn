@@ -139,3 +139,10 @@ iq_learn/data
 *.png
 *.zip
 *.txt
+*.pkl
+*.sh
+*.ckpt
+
+iq_learn/scripts
+iq_learn/encoder/experiments
+iq_learn/encoder/wandb

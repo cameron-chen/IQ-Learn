@@ -1,18 +1,21 @@
 # Inverse Q-Learning (IQ-Learn)
 
 ## Custom training with/without conditions
-By changing the argument "cond_dim" and "random_index", the condition dimension and value can be changed according to the following rule:
-- without any condition: cond_dim=-2 random_index=-1
-- with condition whose value is an array containing -1: cond_dim=10 random_index=-1
-- with single condition with fixed index: cond_dim=10 random_index=0
-- with real conditions matching the expert demo: cond_dim=10 random_index=1
+The argument "cond_type" controls the mode of providing conditions. Please provide desired condition dimension through argument "cond_dim" if using modes other than "cond_type=none"
+| cond_type| Mode |
+| -------- | ------- |
+| none     | No conditions at all   |
+| dummy    | Dummy conditions (e.g. [-1]) |
+| random   | Random conditions during training and evaluation     |
+| debug    | Random conditions during training and use every condition in sequence during evaluation|
+
 ### An example command to perform iq-learn without cond:
 '''
-python train_iq.py env=cheetah agent=sac expert.demos=3 cond_dim=-2 random_index=-1 method.loss=value method.regularize=True agent.actor_lr=3e-05 seed=0 agent.init_temp=1e-2
+python train_iq.py env=cheetah agent=sac expert.demos=3 cond_type=none method.loss=value method.regularize=True agent.actor_lr=3e-05 seed=0 agent.init_temp=1e-2
 '''
 ### An example command to perform iq-learn with cond:
 '''
-python train_iq.py env=cheetah_long agent=sac expert.demos=10 cond_dim=10 random_index=1 method.loss=value method.regularize=True agent.actor_lr=3e-05 seed=0 agent.init_temp=1e-6
+python train_iq.py env=cheetah_long agent=sac expert.demos=10 cond_dim=10 cond_type=random method.loss=value method.regularize=True agent.actor_lr=3e-05 seed=0 agent.init_temp=1e-6
 '''
 ## Expert generation
 conf/env/cheetah_long.yaml is used typically for custom rollouts.

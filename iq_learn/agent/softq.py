@@ -50,7 +50,11 @@ class SoftQ(object):
     def choose_action(self, state, sample=False):
         if isinstance(state, LazyFrames):
             state = np.array(state) / 255.0
-        state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
+        if isinstance(state, np.ndarray):
+            state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
+        elif isinstance(state, tuple) or isinstance(state, list):
+            state = [torch.FloatTensor(s).to(self.device).unsqueeze(0) for s in state]
+        # state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
         with torch.no_grad():
             q = self.q_net(state)
             dist = F.softmax(q/self.alpha, dim=1)

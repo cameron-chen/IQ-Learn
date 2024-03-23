@@ -108,6 +108,15 @@ class OfflineQNetwork(SoftQNetwork):
         x = self.fc3(x)
         return x
 
+class CondOfflineQNetwork(OfflineQNetwork):
+    def __init__(self, obs_dim, action_dim, cond_dim, args, device='cpu'):
+        super().__init__(obs_dim+cond_dim, action_dim, args, device)
+
+    def _forward(self, x, *args):
+        if isinstance(x, list) or isinstance(x, tuple):
+            obs, cond = x
+        x = torch.cat([obs,cond],dim=-1)
+        return super()._forward(x)
 
 class DoubleQNetwork(SoftQNetwork):
     def __init__(self, obs_dim, action_dim, args, device='cpu'):
