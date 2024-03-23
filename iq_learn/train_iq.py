@@ -183,6 +183,7 @@ def main(cfg: DictConfig):
             steps += 1
 
             if learn_steps % args.env.eval_interval == 0:
+                learn_steps += 1  # To prevent repeated eval at timestep 0
                 if args.cond_type=="debug":
                     for eval_index in range(args.expert.demos):
                         eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index)
@@ -192,7 +193,6 @@ def main(cfg: DictConfig):
                     eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type)
                     returns = np.mean(eval_returns)
                     logger.log('eval/episode_reward', returns, learn_steps)
-                learn_steps += 1  # To prevent repeated eval at timestep 0
                 logger.log('eval/episode', epoch, learn_steps)
                 logger.dump(learn_steps, ty='eval')
                 # print('EVAL\tEp {}\tAverage reward: {:.2f}\t'.format(epoch, returns))
