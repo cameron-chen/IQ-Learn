@@ -149,7 +149,7 @@ def main(cfg: DictConfig):
                 expert_cond,
                 logger,
                 learn_steps_bc,
-                args.cond_dim,
+                args.cond_type,
             )
 
             # log losses
@@ -567,10 +567,10 @@ def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_type):
     return losses
 
 
-def bc_update(self, observation, action, condition, logger, step, cond_dim):
+def bc_update(self, observation, action, condition, logger, step, cond_type):
     # SAC version
     if self.actor:
-        if cond_dim == -2:
+        if cond_type == 'none':
             training_metrics = self.loss_calculator(self, observation, action)
         else:
             training_metrics = self.loss_calculator(
@@ -586,7 +586,7 @@ def bc_update(self, observation, action, condition, logger, step, cond_dim):
 
         # update critic
         # if step % self.actor_update_frequency == 0:
-        #     if cond_dim==-2:
+        #     if cond_type == 'none':
         #         critic_losses = self.bc_update_critic(observation, logger, step)
         #     else:
         #         critic_losses = self.bc_update_critic((observation, condition), logger, step)
