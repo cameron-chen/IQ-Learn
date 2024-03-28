@@ -73,7 +73,7 @@ def main(cfg: DictConfig):
     eval_env = make_env(args)
 
     # Seed envs
-    env.seed(args.seed)  # TODO: uncomment this to enable seed on gym
+    env.seed(args.seed) 
     eval_env.seed(args.seed + 10)
 
     REPLAY_MEMORY = int(env_args.replay_mem)
@@ -81,7 +81,7 @@ def main(cfg: DictConfig):
     EPISODE_STEPS = int(env_args.eps_steps)
     EPISODE_WINDOW = int(env_args.eps_window)
     LEARN_STEPS = int(env_args.learn_steps)
-    INITIAL_STATES = 128  # Num initial states to use to calculate value of initial state distribution s_0
+
 
     agent = make_agent(env, args)
     if args.pretrain:
@@ -123,20 +123,12 @@ def main(cfg: DictConfig):
     steps = 0
 
     # track mean reward and scores
-    scores_window = deque(maxlen=EPISODE_WINDOW)  # last N scores
     rewards_window = deque(maxlen=EPISODE_WINDOW)  # last N rewards
     best_eval_returns = -np.inf
 
     learn_steps = 0
     begin_learn = False
     episode_reward = 0
-
-    # Sample initial states from env
-    # state_0 = [env.reset()] * INITIAL_STATES
-    # if isinstance(state_0[0], LazyFrames):
-    #     state_0 = np.array(state_0) / 255.0
-    #     print("lazy frames detected")
-    # state_0 = torch.FloatTensor(np.array(state_0,dtype=np.float32)).to(args.device)
 
     # BC initialization
     if args.method.bc_init:
@@ -545,7 +537,6 @@ def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_type):
                 expert = torch.reshape(expert, shape)
                 return expert
 
-            expert_item = change_shape(policy_batch[0], expert_batch[0])
             if self.args.offline:
                 obs = expert_batch[0]
                 cond = expert_batch[-1]
