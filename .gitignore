@@ -135,6 +135,8 @@ iq_learn/wandb
 iq_learn/envs
 iq_learn/experts
 iq_learn/data
+iq_learn/cond
+iq_learn/test
 
 *.png
 *.zip
