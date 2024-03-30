@@ -310,6 +310,8 @@ def main(cfg: DictConfig):
 
 # cond_type: 1 for real indexed, 0 for fixed index 0, -1 for [-1]*cond_dim
 def get_random_cond(cond_dim, cond_type, cond_location):
+# cond_type: 1 for real indexed, 0 for fixed index 0, -1 for [-1]*cond_dim
+def get_random_cond(cond_dim, cond_type, cond_location):
     if os.path.isfile(cond_location):
         # Load data from single file.
         with open(cond_location, "rb") as f:
@@ -356,9 +358,13 @@ def save(agent, epoch, args, output_dir="results"):
     if epoch % args.save_interval == 0:
         # strip the name of "/"
         name = args.env.name.replace("/", "")
+        # strip the name of "/"
+        name = args.env.name.replace("/", "")
         if args.method.type == "sqil":
             name = f'sqil_{name}'
+            name = f'sqil_{name}'
         else:
+            name = f'iq_{name}'
             name = f'iq_{name}'
 
         if not os.path.exists(output_dir):
@@ -438,6 +444,7 @@ def iq_learn_update(self, policy_batch, expert_batch, logger, step):
     return loss
 
 
+def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_type):
 def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_type):
     args = self.args
     # policy_obs, policy_next_obs, policy_action, policy_reward, policy_done = policy_batch
@@ -533,19 +540,23 @@ def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_type):
 
 
 def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_type):
+def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_type):
     policy_batch = policy_buffer.get_samples(self.batch_size, self.device)
     expert_batch = expert_buffer.get_samples(self.batch_size, self.device)
 
+    losses = self.iq_update_critic(policy_batch, expert_batch, logger, step, cond_type)
     losses = self.iq_update_critic(policy_batch, expert_batch, logger, step, cond_type)
 
     if self.actor and step % self.actor_update_frequency == 0:
         if not self.args.agent.vdice_actor:
             if self.args.offline:
                 obs = expert_batch[0]
+                obs = expert_batch[0]
                 cond = expert_batch[-1]
                 act_demo = expert_batch[2]
             else:
                 # Use both policy and expert observations
+                obs = torch.cat([policy_batch[0], expert_batch[0]], dim=0)
                 obs = torch.cat([policy_batch[0], expert_batch[0]], dim=0)
                 cond = torch.cat([policy_batch[-1], expert_batch[-1]], dim=0)
                 act_demo = expert_batch[2]

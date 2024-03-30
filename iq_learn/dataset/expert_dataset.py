@@ -41,7 +41,6 @@ class ExpertDataset(Dataset):
         self.cond_dim = cond_dim
         self.cond_type = cond_type
         all_trajectories, perm = load_trajectories(expert_location, num_trajectories, seed)
-        all_trajectories, perm = load_trajectories(expert_location, num_trajectories, seed)
         self.trajectories = {}
 
         # Randomize start index of each trajectory for subsampling
