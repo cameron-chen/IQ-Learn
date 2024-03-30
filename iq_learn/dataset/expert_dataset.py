@@ -82,12 +82,16 @@ class ExpertDataset(Dataset):
             # Load data from single file.
             with open(cond_location, 'rb') as f:
                 conds = read_file(cond_location, f)
-        self.conds = conds["emb"][:num_trajectories]
+        
         # print("conds length: ", len(self.conds))
         # print("trajectories length: ", len(self.trajectories["states"]))
         # apply permutation to cond
         # print("perm:",perm)
-        self.conds = [self.conds[i] for i in perm]
+        if cond_type!="none":
+            self.conds = [conds["emb"][i] for i in perm]
+            self.conds = self.conds[:num_trajectories]
+        else:
+            self.conds = conds["emb"][:num_trajectories]
         # print("permuted condss:",self.conds)
         assert len(self.conds)==len(self.trajectories["states"])
 

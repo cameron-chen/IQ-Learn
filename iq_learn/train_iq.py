@@ -52,7 +52,12 @@ def get_args(cfg: DictConfig):
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig):
     args = get_args(cfg)
-    wandb.init(project="hil_iq", sync_tensorboard=True, reinit=True, config=args, name=f"{args.env.cond} expert{args.expert.demos} temp{args.agent.init_temp} {args.method.loss}")
+    if args.wandb:
+        if args.cond_type=="none":
+            exp_name = args.env.demo
+        else:
+            exp_name = args.env.cond
+        wandb.init(project="hil_iq", sync_tensorboard=True, reinit=True, config=args, name=f"{exp_name} expert{args.expert.demos} temp{args.agent.init_temp} {args.method.loss}")
     # set seeds
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -257,10 +262,12 @@ def read_file(path: str, file_handle: IO[Any]) -> Dict[str, Any]:
 
 def save(agent, epoch, args, output_dir='results'):
     if epoch % args.save_interval == 0:
+        # strip the name of "/"
+        name = args.env.name.replace("/", "")
         if args.method.type == "sqil":
-            name = f'sqil_{args.env.name}'
+            name = f'sqil_{name}'
         else:
-            name = f'iq_{args.env.name}'
+            name = f'iq_{name}'
 
         if not os.path.exists(output_dir):
             os.mkdir(output_dir)

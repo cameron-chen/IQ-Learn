@@ -41,13 +41,13 @@ def main(cfg: DictConfig):
             print("--> Using PPO to train the model")
             from stable_baselines3 import PPO
             agent = PPO("MlpPolicy", env=env,verbose=1)
-        TRAIN_TIMESTEPS = 10000
+        TRAIN_TIMESTEPS = 50000
         TOTAL_EPOCHS = 4
         print(f"Env name : {args.env.name}")
         print("--> Training model, please expect a long training time")
         for i in range(TOTAL_EPOCHS):
             agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS)
-            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/cartpole_seals_{(i+1)*TRAIN_TIMESTEPS}.zip'
+            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/{args.env.name}_{(i+1)*TRAIN_TIMESTEPS}.zip'
             agent.save(model_save_path)
             print(f"Saved model at step {(i+1)*TRAIN_TIMESTEPS} at location {model_save_path}")
         # agent.load_state_dict(torch.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/policy.pth"))
@@ -139,17 +139,29 @@ def main(cfg: DictConfig):
         # if (not REWARD_THRESHOLD or episode_reward >= REWARD_THRESHOLD) and (not use_success or score >= 1.):
         if args.agent=="sac" and episode_reward.ndim == 1:
             episode_reward = episode_reward[0]
-        if (not REWARD_THRESHOLD or episode_reward >= REWARD_THRESHOLD) and episode_reward <= 500:
+        if (not REWARD_THRESHOLD or episode_reward >= REWARD_THRESHOLD):
             saved_eps += 1
             states, next_states, actions, rewards, dones = zip(*traj)
+            length = len(traj)
+
+            pad = False
+            if pad == True:
+                # pad them
+                target_len = 1000
+                states = padded(states, target_len)
+                next_states = padded(next_states, target_len)
+                actions = padded(actions, target_len)
+                rewards = padded(rewards, target_len)
+                dones = padded(dones, target_len)
+                length = target_len
 
             expert_trajs["states"].append(states)
             expert_trajs["next_states"].append(next_states)
             expert_trajs["actions"].append(actions)
             expert_trajs["rewards"].append(rewards)
             expert_trajs["dones"].append(dones)
-            expert_trajs["lengths"].append(len(traj))
-            expert_lengths.append(len(traj))
+            expert_trajs["lengths"].append(length)
+            expert_lengths.append(length)
             expert_rewards.append(episode_reward)
             print('Ep {}\tSaving Episode reward: {:.2f}\t'.format(epoch, episode_reward))
         else:

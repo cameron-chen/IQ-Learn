@@ -24,6 +24,7 @@ import gym
 from pyvirtualdisplay import Display
 from gym import wrappers
 import matplotlib.pyplot as plt
+from scipy.stats import zscore
 
 LOGGER = logging.getLogger(__name__)
 
@@ -95,6 +96,10 @@ def run_exp(config, expert_file, datafile):
         full_loader = utils.cartpole_full_loader(1, expert_file)
         hssm.post_obs_state._output_normal = True
         hssm._output_normal = True
+    elif config.get("env") == "lunar":
+        full_loader = utils.lunar_full_loader(1, expert_file)
+        hssm.post_obs_state._output_normal = True
+        hssm._output_normal = True
     else:
         raise ValueError()
     
@@ -133,23 +138,25 @@ def run_exp(config, expert_file, datafile):
         # plt.savefig('first_dimension.png')
 
         ## --> Use dummy value to replace the embedding
-        # if count<=9:
-        #     dummy_value = -1
-        # else:
-        #     dummy_value = 1
-        # count += 1
-        # # create dummy which is the same shape as result[-3] and the values are dummy_value
-        # dummy = [[dummy_value for i in range(len(j))] for j in results[-3]]
-        # emb_list["emb"].extend(dummy)
+        if count<=9:
+            dummy_value = -1
+        else:
+            dummy_value = 1
+        count += 1
+        # create dummy which is the same shape as result[-3] and the values are dummy_value
+        dummy = [[dummy_value for i in range(len(j))] for j in results[-3]]
+        emb_list["emb"].extend(dummy)
 
         emb_list["num_m"].extend([len(i) for i in results[-4]])
-        emb_list["emb"].extend(results[-3])
+        # emb_list["emb"].extend(results[-3])
         emb_list["level"].extend(level_list)
         emb_list["num_z"].extend([len(i) for i in results[-2]])
         emb_list["z"].extend(results[-1])
 
         if b_idx >= 500:
             break
+    ## --> Normalize the emb using z score normalization
+    # emb_list["emb"] = zscore(emb_list["emb"])
     with open(datafile, 'wb') as f:
         pickle.dump(emb_list, f)
         
