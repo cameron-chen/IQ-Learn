@@ -73,7 +73,7 @@ def main(cfg: DictConfig):
     eval_env = make_env(args)
 
     # Seed envs
-    env.seed(args.seed) 
+    env.seed(args.seed)
     eval_env.seed(args.seed + 10)
 
     REPLAY_MEMORY = int(env_args.replay_mem)
@@ -81,7 +81,6 @@ def main(cfg: DictConfig):
     EPISODE_STEPS = int(env_args.eps_steps)
     EPISODE_WINDOW = int(env_args.eps_window)
     LEARN_STEPS = int(env_args.learn_steps)
-
 
     agent = make_agent(env, args)
     if args.pretrain:
@@ -130,14 +129,17 @@ def main(cfg: DictConfig):
     begin_learn = False
     episode_reward = 0
 
-    # BC initialization
-    if args.method.bc_init:
-        agent.bc_update = types.MethodType(bc_update, agent)
+    # bc loss function
+    if args.method.enable_bc_actor_update:
         agent.loss_calculator = BehaviorCloningLossCalculator(
             ent_weight=1e-3,  # args.method.bc_ent_weight,
             l2_weight=0.0,  # args.method.bc_l2_weight,
         )
+        agent.bc_alpha = args.method.bc_alpha
 
+    # BC initialization
+    if args.method.bc_init:
+        agent.bc_update = types.MethodType(bc_update, agent)
         for learn_steps_bc in count():
             expert_batch = expert_memory_replay.get_samples(
                 agent.batch_size, agent.device
@@ -149,7 +151,7 @@ def main(cfg: DictConfig):
                 expert_cond,
                 logger,
                 learn_steps_bc,
-                args.cond_dim,
+                args.cond_type,
             )
 
             # log losses
@@ -531,30 +533,27 @@ def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_type):
 
     if self.actor and step % self.actor_update_frequency == 0:
         if not self.args.agent.vdice_actor:
-
-            def change_shape(online, expert):
-                shape = online.shape
-                expert = torch.reshape(expert, shape)
-                return expert
-
             if self.args.offline:
                 obs = expert_batch[0]
                 cond = expert_batch[-1]
+                act_demo = expert_batch[2]
             else:
                 # Use both policy and expert observations
                 obs = torch.cat([policy_batch[0], expert_batch[0]], dim=0)
                 cond = torch.cat([policy_batch[-1], expert_batch[-1]], dim=0)
+                act_demo = expert_batch[2]
+            if not self.args.method.enable_bc_actor_update:
+                act_demo = None
 
             if self.args.num_actor_updates:
                 for i in range(self.args.num_actor_updates):
-                    # actor_alpha_losses = self.update_actor_and_alpha(obs, logger, step)
                     if cond_type == "none":
                         actor_alpha_losses = self.update_actor_and_alpha(
-                            obs, logger, step
+                            obs, act_demo, logger, step
                         )
                     else:
                         actor_alpha_losses = self.update_actor_and_alpha(
-                            (obs, cond), logger, step
+                            (obs, cond), act_demo, logger, step
                         )
 
             losses.update(actor_alpha_losses)
@@ -567,15 +566,13 @@ def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_type):
     return losses
 
 
-def bc_update(self, observation, action, condition, logger, step, cond_dim):
+def bc_update(self, observation, action, condition, logger, step, cond_type):
     # SAC version
     if self.actor:
-        if cond_dim == -2:
+        if cond_type == "none":
             training_metrics = self.loss_calculator(self, observation, action)
         else:
-            training_metrics = self.loss_calculator(
-                self, (observation, condition), action
-            )
+            training_metrics = self.loss_calculator(self, (observation, condition), action)
 
         loss = training_metrics["loss/bc_actor"]
 
@@ -586,7 +583,7 @@ def bc_update(self, observation, action, condition, logger, step, cond_dim):
 
         # update critic
         # if step % self.actor_update_frequency == 0:
-        #     if cond_dim==-2:
+        #     if cond_type == 'none':
         #         critic_losses = self.bc_update_critic(observation, logger, step)
         #     else:
         #         critic_losses = self.bc_update_critic((observation, condition), logger, step)

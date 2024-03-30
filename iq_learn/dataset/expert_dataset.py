@@ -82,7 +82,7 @@ class ExpertDataset(Dataset):
             # Load data from single file.
             with open(cond_location, 'rb') as f:
                 conds = read_file(cond_location, f)
-        self.conds = conds["emb"][:num_trajectories]
+        self.conds = conds["emb"]
         # print("conds length: ", len(self.conds))
         # print("trajectories length: ", len(self.trajectories["states"]))
         # apply permutation to cond
@@ -155,10 +155,9 @@ def load_trajectories(expert_location: str,
             # if not torch.is_tensor(v):
             #     v = np.array(v)  # convert to numpy array
             trajs[k] = [v[i] for i in idx]
-
     else:
         raise ValueError(f"{expert_location} is not a valid path")
-    return trajs, perm
+    return trajs, idx
 
 
 def read_file(path: str, file_handle: IO[Any]) -> Dict[str, Any]:

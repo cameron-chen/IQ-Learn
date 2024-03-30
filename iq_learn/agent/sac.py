@@ -153,18 +153,33 @@ class SAC(object):
             'critic_loss/critic_2': q2_loss.item(),
             'loss/critic': critic_loss.item()}
 
-    def update_actor_and_alpha(self, obs, logger, step):
+    def update_actor_and_alpha(self, obs, act_demo, logger, step):
         action, log_prob, _ = self.actor.sample(obs)
         if isinstance(obs, list) or isinstance(obs, tuple):
             _obs, cond = obs
             actor_Q = self.critic((_obs, action, cond))
+            if act_demo is not None:
+                act_len = act_demo.shape[0]
+                obs_demo, cond_demo = _obs[-act_len:], cond[-act_len:]
+                bc_metrics = self.loss_calculator(self, (obs_demo, cond_demo), act_demo)
+            else: 
+                bc_metrics = None
         else:
             actor_Q = self.critic(obs, action)
-        # actor_Q = self.critic(obs, action)
+            if act_demo is not None:
+                act_len = act_demo.shape[0]
+                obs_demo = obs[-act_len:]
+                bc_metrics = self.loss_calculator(self, obs_demo, act_demo)
+            else: 
+                bc_metrics = None
 
-        actor_loss = (self.alpha.detach() * log_prob - actor_Q).mean()
+        iq_actor_loss = (self.alpha.detach() * log_prob - actor_Q).mean()
+        bc_actor_loss = torch.tensor([0.]) if bc_metrics is None else bc_metrics['loss/bc_actor']
+        actor_loss = iq_actor_loss + self.bc_alpha * bc_actor_loss
 
         logger.log('train/actor_loss', actor_loss, step)
+        logger.log('train/iq_actor_loss', iq_actor_loss, step)
+        logger.log('train/bc_actor_loss', bc_actor_loss, step)
         logger.log('train/target_entropy', self.target_entropy, step)
         logger.log('train/actor_entropy', -log_prob.mean(), step)
 
@@ -175,6 +190,8 @@ class SAC(object):
 
         losses = {
             'loss/actor': actor_loss.item(),
+            'actor_loss/iq_actor_loss': iq_actor_loss.item(),
+            'actor_loss/bc_actor_loss': bc_actor_loss.item(),
             'actor_loss/target_entropy': self.target_entropy,
             'actor_loss/entropy': -log_prob.mean().item()}
 
