@@ -203,10 +203,25 @@ def main():
         )
         output_normal = True
         os.chdir("/home/zichang/proj/IQ-Learn/iq_learn")
+    elif "lunar" in args.dataset_path:
+        train_loader, test_loader = utils.lunar_loader(args.batch_size, args.hil_seq_size)
+        action_encoder = LinearLayer(
+            input_size=train_loader.dataset.action_size,
+            output_size=args.belief_size)
+        encoder = LinearLayer(
+            input_size=train_loader.dataset.obs_size,
+            output_size=args.belief_size)
+        decoder = GridDecoder(
+            input_size=args.belief_size,
+            action_size=train_loader.dataset.action_size,
+            feat_size=args.belief_size,
+        )
+        output_normal = True
+        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
     else:
         raise ValueError(f"Unrecognize dataset_path {args.dataset_path}")
 
-    if "hil" or "cartpole" in args.dataset_path:
+    if args.dataset_path in ["hil","cartpole","lunar"]:
         from hssm_rl_hil import EnvModel
     else:
         from hssm_rl import EnvModel
@@ -240,7 +255,7 @@ def main():
     optimizer = Adam(params=model.parameters(), lr=args.learn_rate, amsgrad=True)
 
     # test data
-    if "hil" not in args.dataset_path and "cartpole" not in args.dataset_path:
+    if args.dataset_path not in ["hil","cartpole","lunar"]:
         pre_test_full_state_list, pre_test_full_action_list = next(iter(test_loader))
         pre_test_full_state_list = pre_test_full_state_list.to(device)
         pre_test_full_action_list = pre_test_full_action_list.to(device)
@@ -258,7 +273,7 @@ def main():
     train_loss_list =[]
     while b_idx <= args.max_iters:
         # for each batch
-        if "hil" not in args.dataset_path and "cartpole" not in args.dataset_path:
+        if args.dataset_path not in ["hil", "cartpole", "lunar"]:
             for train_obs_list, train_action_list in train_loader:
                 b_idx += 1
                 # mask temp annealing
@@ -601,9 +616,9 @@ def main():
     # plt.savefig("figs/" + exp_name + '.png')
 
     # offline save training loss curve as one line string in txt file
-    with open("txt_loss/" + exp_name + '.txt', 'w') as f:
-        for item in train_loss_list:
-            f.write("%s\n" % item)
+    # with open("txt_loss/" + exp_name + '.txt', 'w') as f:
+    #     for item in train_loss_list:
+    #         f.write("%s\n" % item)
     
 
 if __name__ == "__main__":
