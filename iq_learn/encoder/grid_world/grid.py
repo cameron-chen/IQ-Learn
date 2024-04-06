@@ -5,7 +5,7 @@ import enum
 import gym
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-
+import copy
 
 class Action(enum.IntEnum):
     left = 0

@@ -175,7 +175,7 @@ class SAC(object):
 
         iq_actor_loss = (self.alpha.detach() * log_prob - actor_Q).mean()
         bc_actor_loss = torch.tensor([0.]) if bc_metrics is None else bc_metrics['loss/bc_actor']
-        actor_loss = iq_actor_loss + self.bc_alpha * bc_actor_loss
+        actor_loss = iq_actor_loss + self.bc_alpha * bc_actor_loss if bc_metrics is not None else iq_actor_loss
 
         logger.log('train/actor_loss', actor_loss, step)
         logger.log('train/iq_actor_loss', iq_actor_loss, step)

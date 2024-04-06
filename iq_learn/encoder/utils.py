@@ -9,7 +9,7 @@ from tqdm import trange
 import wandb
 import os
 import pickle
-
+from grid_world import grid
 
 FONT = ImageFont.load_default()
 
