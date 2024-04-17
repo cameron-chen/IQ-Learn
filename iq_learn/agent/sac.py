@@ -177,11 +177,19 @@ class SAC(object):
         bc_actor_loss = torch.tensor([0.]) if bc_metrics is None else bc_metrics['loss/bc_actor']
         actor_loss = iq_actor_loss + self.bc_alpha * bc_actor_loss if bc_metrics is not None else iq_actor_loss
 
+        neglogp = torch.tensor([0.]) if bc_metrics is None else bc_metrics['bc_actor_loss/neglogp']
+        ent_loss = torch.tensor([0.]) if bc_metrics is None else bc_metrics['bc_actor_loss/ent_loss']
+        l2_loss = torch.tensor([0.]) if bc_metrics is None else bc_metrics['bc_actor_loss/l2_loss'] 
+        
         logger.log('train/actor_loss', actor_loss, step)
         logger.log('train/iq_actor_loss', iq_actor_loss, step)
         logger.log('train/bc_actor_loss', bc_actor_loss, step)
         logger.log('train/target_entropy', self.target_entropy, step)
         logger.log('train/actor_entropy', -log_prob.mean(), step)
+
+        logger.log('train/bc_neglogp', neglogp, step)
+        logger.log('train/bc_ent_loss', ent_loss, step)
+        logger.log('train/bc_l2_loss', l2_loss, step)
 
         # optimize the actor
         self.actor_optimizer.zero_grad()

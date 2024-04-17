@@ -54,7 +54,18 @@ def get_args(cfg: DictConfig):
 def main(cfg: DictConfig):
     args = get_args(cfg)
     if args.wandb:
-        wandb.init(project="hil_iq", sync_tensorboard=True, reinit=True, config=args, name=f"{args.env.cond} expert{args.expert.demos} temp{args.agent.init_temp} {args.method.loss}")
+        if args.cond_type!="none":
+            exp_name = args.env.cond
+        else: 
+            exp_name = args.env.demo
+        wandb.init(
+            project="hil_iq", 
+            sync_tensorboard=True, 
+            reinit=True, 
+            config=args, 
+            name=f"bc_init={args.method.bc_init} bc_alpha={args.method.bc_alpha}"
+        )
+
     # set seeds
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -132,12 +143,12 @@ def main(cfg: DictConfig):
     # state_0 = torch.FloatTensor(np.array(state_0,dtype=np.float32)).to(args.device)
 
     # bc loss function
-    if args.method.enable_bc_actor_update:
-        agent.loss_calculator = BehaviorCloningLossCalculator(
-            ent_weight=1e-3,  # args.method.bc_ent_weight,
-            l2_weight=0.0,  # args.method.bc_l2_weight,
-        )
-        agent.bc_alpha = args.method.bc_alpha
+    # if args.method.enable_bc_actor_update:
+    agent.loss_calculator = BehaviorCloningLossCalculator(
+        ent_weight=1e-3,  # args.method.bc_ent_weight,
+        l2_weight=0.0,  # args.method.bc_l2_weight,
+    )
+    agent.bc_alpha = args.method.bc_alpha
 
     # BC initialization
     if args.method.bc_init:
@@ -164,21 +175,18 @@ def main(cfg: DictConfig):
                 logger.dump(learn_steps_bc)
 
             # eval every n steps
-            if learn_steps_bc % 100 == 0:  # args.env.eval_interval == 0:
-                for eval_index in range(args.expert.demos):
-                    eval_returns, eval_timesteps = evaluate(
-                        agent,
-                        eval_env,
-                        hydra.utils.to_absolute_path(f"cond/{args.env.cond}"),
-                        num_episodes=args.eval.eps,
-                        cond_dim=args.cond_dim,
-                        cond_type=args.cond_type,
-                        eval_index=eval_index,
-                    )
+            if learn_steps_bc % 400 == 0:  # args.env.eval_interval == 0:
+                eval_num = 2
+                for eval_index in range(eval_num):
+                    # low ability level
+                    eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index)
                     returns = np.mean(eval_returns)
-                    logger.log(
-                        f"eval/bc_episode_reward{eval_index}", returns, learn_steps_bc
-                    )
+                    logger.log(f'eval/episode_reward_low{eval_index}', returns, learn_steps)
+                    # high ability level
+                    high_index = eval_index + args.expert.demos//2
+                    eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=high_index)
+                    returns = np.mean(eval_returns)
+                    logger.log(f'eval/episode_reward_high{high_index}', returns, learn_steps)
                 # logger.log('eval/bc_episode_reward', returns, learn_steps_bc)
                 logger.dump(learn_steps_bc, ty="eval")
 
@@ -209,10 +217,17 @@ def main(cfg: DictConfig):
 
             if learn_steps % args.env.eval_interval == 0:
                 if args.cond_type=="debug":
-                    for eval_index in range(args.expert.demos):
+                    eval_num = 2
+                    for eval_index in range(eval_num):
+                        # low ability level
                         eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index)
                         returns = np.mean(eval_returns)
-                        logger.log(f'eval/episode_reward{eval_index}', returns, learn_steps)
+                        logger.log(f'eval/episode_reward_low{eval_index}', returns, learn_steps)
+                        # high ability level
+                        high_index = eval_index + args.expert.demos//2
+                        eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=high_index)
+                        returns = np.mean(eval_returns)
+                        logger.log(f'eval/episode_reward_high{high_index}', returns, learn_steps)
                 else:
                     eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type)
                     returns = np.mean(eval_returns)
