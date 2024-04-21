@@ -9,7 +9,7 @@ from tqdm import trange
 import wandb
 import os
 import pickle
-from grid_world import grid
+# from grid_world import grid
 
 FONT = ImageFont.load_default()
 
@@ -540,52 +540,52 @@ def full_dataloader_toy(
     return train_loader, test_loader
 
 
-class GridworldDataset(Dataset):
-    def __init__(self, partition, path):
-        self.partition = partition
-        trajectories = []
-        for f_name in sorted(os.listdir(path)):
-            full_path = os.path.join(path, f_name)
-            with open(full_path, "rb") as f:
-                trajectory = pickle.load(f)
-                padding = tuple(trajectory[0][i] * 0 for i in range(len(trajectory[0])))
-                trajectory.append(padding)
-                trajectory = [padding] + trajectory
-                trajectories.append(trajectory)
-        num_heldout = 1
-        if self.partition == "train":
-            self.state = trajectories[
-                :-num_heldout
-            ]  # num_train x ep length x (s, a, s_tp1)
-        else:
-            self.state = trajectories[-num_heldout:]
+# class GridworldDataset(Dataset):
+#     def __init__(self, partition, path):
+#         self.partition = partition
+#         trajectories = []
+#         for f_name in sorted(os.listdir(path)):
+#             full_path = os.path.join(path, f_name)
+#             with open(full_path, "rb") as f:
+#                 trajectory = pickle.load(f)
+#                 padding = tuple(trajectory[0][i] * 0 for i in range(len(trajectory[0])))
+#                 trajectory.append(padding)
+#                 trajectory = [padding] + trajectory
+#                 trajectories.append(trajectory)
+#         num_heldout = 1
+#         if self.partition == "train":
+#             self.state = trajectories[
+#                 :-num_heldout
+#             ]  # num_train x ep length x (s, a, s_tp1)
+#         else:
+#             self.state = trajectories[-num_heldout:]
 
-        self.obs_size = self.state[0][0][0].shape
-        self.action_size = 9
+#         self.obs_size = self.state[0][0][0].shape
+#         self.action_size = 9
 
-    @property
-    def seq_size(self):
-        return len(self.state[0]) - 2
+#     @property
+#     def seq_size(self):
+#         return len(self.state[0]) - 2
 
-    def __len__(self):
-        return len(self.state)
+#     def __len__(self):
+#         return len(self.state)
 
-    def __getitem__(self, index):
-        traj = self.state[index]
-        s, a, _ = zip(*traj)
-        return np.stack(s), np.stack(a)
+#     def __getitem__(self, index):
+#         traj = self.state[index]
+#         s, a, _ = zip(*traj)
+#         return np.stack(s), np.stack(a)
 
 
-def gridworld_loader(batch_size, path="./data/demos"):
-    train_dataset = GridworldDataset(partition="train", path=path)
-    test_dataset = GridworldDataset(partition="test", path=path)
-    train_loader = DataLoader(
-        dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=True
-    )
-    test_loader = DataLoader(
-        dataset=test_dataset, batch_size=len(test_dataset), shuffle=False
-    )
-    return train_loader, test_loader
+# def gridworld_loader(batch_size, path="./data/demos"):
+#     train_dataset = GridworldDataset(partition="train", path=path)
+#     test_dataset = GridworldDataset(partition="test", path=path)
+#     train_loader = DataLoader(
+#         dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=True
+#     )
+#     test_loader = DataLoader(
+#         dataset=test_dataset, batch_size=len(test_dataset), shuffle=False
+#     )
+#     return train_loader, test_loader
 
 
 class ComPILEDataset(Dataset):
@@ -603,7 +603,7 @@ class ComPILEDataset(Dataset):
             self.state = trajectories[-num_heldout:]
 
         self.obs_size = self.state[0][0][0].shape
-        self.action_size = len(grid.Action)
+        # self.action_size = len(grid.Action)
 
     @property
     def seq_size(self):

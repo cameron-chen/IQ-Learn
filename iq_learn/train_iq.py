@@ -3,7 +3,6 @@ Copyright 2022 Div Garg. All rights reserved.
 
 Example training code for IQ-Learn which minimially modifies `train_rl.py`.
 """
-
 import datetime
 import os
 import random
@@ -38,6 +37,7 @@ from wrappers.atari_wrapper import LazyFrames
 from typing import IO, Any, Dict
 import pickle
 from bc import BehaviorCloningLossCalculator
+from encoder.utils import *
 
 torch.set_num_threads(2)
 
@@ -135,6 +135,19 @@ def main(cfg: DictConfig):
     begin_learn = False
     episode_reward = 0
 
+    # Encoder Init
+    # print work dir
+    # change work dir to encoder dir
+    # os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
+    import sys
+    sys.path.append('/home/zichang/proj/IQ-Learn/iq_learn/encoder')
+    print("Current working directory: ", os.getcwd())
+    exp_dir = "/home/zichang/proj/IQ-Learn/iq_learn/encoder/experiments/cheetah_cond10/"
+    checkpoint = exp_dir+"model-vae.ckpt"
+    encoder = torch.load(checkpoint)
+    encoder.train()
+    encoder.to(device)
+    print(f"Encoder Loaded: {checkpoint}")
     # Sample initial states from env
     # state_0 = [env.reset()] * INITIAL_STATES
     # if isinstance(state_0[0], LazyFrames):
@@ -147,6 +160,7 @@ def main(cfg: DictConfig):
     agent.loss_calculator = BehaviorCloningLossCalculator(
         ent_weight=1e-3,  # args.method.bc_ent_weight,
         l2_weight=0.0,  # args.method.bc_l2_weight,
+        kld_weight=1.0,  # args.method.bc_kld_weight,
     )
     agent.bc_alpha = args.method.bc_alpha
 
@@ -157,7 +171,8 @@ def main(cfg: DictConfig):
             expert_batch = expert_memory_replay.get_samples(
                 agent.batch_size, agent.device
             )
-            expert_obs, _, expert_action, __, ___, expert_cond = expert_batch
+            expert_obs, _, expert_action, __, ___, expert_cond, expert_dist_params = expert_batch
+            mu, log_var = expert_dist_params[0], expert_dist_params[1]
             losses = agent.bc_update(
                 expert_obs,
                 expert_action,
@@ -165,6 +180,8 @@ def main(cfg: DictConfig):
                 logger,
                 learn_steps_bc,
                 args.cond_type,
+                mu,
+                log_var
             )
 
             # log losses
@@ -175,8 +192,8 @@ def main(cfg: DictConfig):
                 logger.dump(learn_steps_bc)
 
             # eval every n steps
-            if learn_steps_bc % 400 == 0:  # args.env.eval_interval == 0:
-                eval_num = 2
+            if learn_steps_bc % 100 == 0:  # args.env.eval_interval == 0:
+                eval_num = 2 # TODO: change to 2 for training
                 for eval_index in range(eval_num):
                     # low ability level
                     eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index)
@@ -189,12 +206,24 @@ def main(cfg: DictConfig):
                     logger.log(f'eval/episode_reward_high{high_index}', returns, learn_steps)
                 # logger.log('eval/bc_episode_reward', returns, learn_steps_bc)
                 logger.dump(learn_steps_bc, ty="eval")
-
+                # refresh expert memory with new cond and new dist_params
+                get_new_cond(encoder, hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), hydra.utils.to_absolute_path('cond/temp_cond.pkl'), device)
+                expert_memory_replay.load(hydra.utils.to_absolute_path(f'experts/{args.env.demo}'),
+                              num_trajs=args.expert.demos,
+                              sample_freq=args.expert.subsample_freq,
+                              seed=args.seed + 42,
+                              cond_dim=args.cond_dim,
+                              cond_type=args.cond_type,
+                              cond_location=hydra.utils.to_absolute_path('cond/temp_cond.pkl'))
+                print(f'--> New expert memory size: {expert_memory_replay.size()}')
             if learn_steps_bc == args.bc_steps:
                 learn_steps_bc += 1
                 print("Finished BC!")
                 break
-
+        save_dir = os.path.join(exp_dir, "model-vae.ckpt")
+        torch.save(encoder, save_dir)
+        print(f"Encoder saved at {save_dir}. Skipping IQ-learn")
+        return
     for epoch in count(): # n of episodes
         state = env.reset()
         episode_reward = 0
@@ -287,6 +316,55 @@ def main(cfg: DictConfig):
         logger.dump(learn_steps, save=begin_learn)
         # print('TRAIN\tEp {}\tAverage reward: {:.2f}\t'.format(epoch, np.mean(rewards_window)))
         save(agent, epoch, args, output_dir='results')
+
+def get_new_cond(encoder, expert_file, cond_file, device):
+    
+    full_loader = cheetah_full_loader(1, expert_file)
+    encoder.post_obs_state._output_normal = True
+    encoder._output_normal = True
+    seq_size = full_loader.dataset.seq_size
+    init_size = 1
+    b_idx = 0
+    emb_list = {"num_m":[],"emb": [], "level":[], "num_z":[], "z":[], "dist_params":[]}
+    count = 0
+    for obs_list, action_list, level_list in full_loader:
+        # obs_list 100 1000 17
+        # action_list 100 1000 6
+        # trai_level_list 100
+        b_idx += 1
+        obs_list = obs_list.to(device)
+        action_list = action_list.to(device)
+        results = encoder(obs_list, action_list, seq_size, init_size)
+        mean, std = encoder.get_dist_params()
+        emb = reparameterize(mean, std)
+        emb = emb.detach().cpu().numpy()
+        mean = mean.detach().cpu().numpy()
+        std = std.detach().cpu().numpy()
+        emb_list["num_m"].extend([len(i) for i in results[-4]])
+        # emb_list["emb"].extend(results[-3])
+        emb_list["emb"].extend(emb)
+        emb_list["level"].extend(level_list)
+        emb_list["num_z"].extend([len(i) for i in results[-2]])
+        emb_list["z"].extend(results[-1])
+        emb_list["dist_params"].extend((mean, std))
+        if b_idx >= 500:
+            break
+    ## --> Normalize the emb using z score normalization
+    # emb_list["emb"] = zscore(emb_list["emb"])
+    with open(cond_file, 'wb') as f:
+        pickle.dump(emb_list, f)
+
+def reparameterize(mu, logvar):
+    """
+    Reparameterization trick to sample from N(mu, var) from
+    N(0,1).
+    :param mu: (Tensor) Mean of the latent Gaussian [B x D]
+    :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
+    :return: (Tensor) [B x D]
+    """
+    std = torch.exp(0.5 * logvar)
+    eps = torch.randn_like(std)
+    return eps * std + mu
 
 # cond_type: 1 for real indexed, 0 for fixed index 0, -1 for [-1]*cond_dim
 def get_random_cond(cond_dim, cond_type, cond_location):
@@ -510,13 +588,13 @@ def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_type):
             hard_update(self.critic_net, self.critic_target_net)
     return losses
 
-def bc_update(self, observation, action, condition, logger, step, cond_type):
+def bc_update(self, observation, action, condition, logger, step, cond_type, mu, log_var):
     # SAC version
     if self.actor:
         if cond_type == "none":
             training_metrics = self.loss_calculator(self, observation, action)
         else:
-            training_metrics = self.loss_calculator(self, (observation, condition), action)
+            training_metrics = self.loss_calculator(self, (observation, condition), action, mu, log_var)
 
         loss = training_metrics["loss/bc_actor"]
 

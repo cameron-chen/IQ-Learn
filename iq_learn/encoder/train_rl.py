@@ -134,7 +134,7 @@ def main():
     exp_name = set_exp_name(args)
 
     wandb.init(
-        project="hil",
+        project="cheetah",
         entity="zichang_team",
         name=exp_name,
         sync_tensorboard=False,
@@ -173,7 +173,7 @@ def main():
             feat_size=args.belief_size,
         )
         output_normal = False
-    elif "hil" in args.dataset_path:
+    elif "cheetah" in args.dataset_path:
         train_loader, test_loader = utils.hil_loader(args.batch_size, args.hil_seq_size)
         action_encoder = LinearLayer(
             input_size=train_loader.dataset.action_size,
@@ -187,7 +187,7 @@ def main():
             feat_size=args.belief_size,
         )
         output_normal = True
-        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn")
+        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
     elif "cartpole" in args.dataset_path:
         train_loader, test_loader = utils.cartpole_loader(args.batch_size, args.hil_seq_size)
         action_encoder = LinearLayer(
@@ -221,7 +221,7 @@ def main():
     else:
         raise ValueError(f"Unrecognize dataset_path {args.dataset_path}")
 
-    if args.dataset_path in ["hil","cartpole","lunar"]:
+    if args.dataset_path in ["cheetah","cartpole","lunar"]:
         from hssm_rl_hil import EnvModel
     else:
         from hssm_rl import EnvModel
@@ -255,7 +255,7 @@ def main():
     optimizer = Adam(params=model.parameters(), lr=args.learn_rate, amsgrad=True)
 
     # test data
-    if args.dataset_path not in ["hil","cartpole","lunar"]:
+    if args.dataset_path not in ["cheetah","cartpole","lunar"]:
         pre_test_full_state_list, pre_test_full_action_list = next(iter(test_loader))
         pre_test_full_state_list = pre_test_full_state_list.to(device)
         pre_test_full_action_list = pre_test_full_action_list.to(device)
@@ -273,7 +273,7 @@ def main():
     train_loss_list =[]
     while b_idx <= args.max_iters:
         # for each batch
-        if args.dataset_path not in ["hil", "cartpole", "lunar"]:
+        if args.dataset_path not in ["cheetah", "cartpole", "lunar"]:
             for train_obs_list, train_action_list in train_loader:
                 b_idx += 1
                 # mask temp annealing
@@ -582,7 +582,7 @@ def main():
                 np.set_printoptions(threshold=100000)
                 torch.set_printoptions(threshold=100000)
                     
-                if b_idx % 100 == 0:
+                if b_idx % 10 == 0:
                     exp_dir = os.path.join("experiments", args.name)
                     torch.save(
                         model.module.state_model, os.path.join(exp_dir, f"model-{b_idx}.ckpt")

@@ -148,3 +148,6 @@ iq_learn/test
 iq_learn/scripts
 iq_learn/encoder/experiments
 iq_learn/encoder/wandb
+iq_learn/encoder/outputs
+iq_learn/encoder/results
+iq_learn/encoder/results_best

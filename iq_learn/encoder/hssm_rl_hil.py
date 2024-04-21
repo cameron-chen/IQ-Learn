@@ -1,9 +1,10 @@
+# import os
+# os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
 from torch.nn.modules.linear import Linear
 from modules import *
 from utils import *
 import torch.nn as nn
 import numpy as np
-
 class HierarchicalStateSpaceModel(nn.Module):
     def __init__(
         self,
@@ -24,7 +25,7 @@ class HierarchicalStateSpaceModel(nn.Module):
         ######################
         # distribution size ##
         ######################
-        self.dist_size = 128
+        self.dist_size = 20 # dist_size = cond_size*2
         self.mean = -1
         self.std = -1
         self.latent_n = latent_n
@@ -159,7 +160,7 @@ class HierarchicalStateSpaceModel(nn.Module):
         ##########################
         self.z_logit_feat = LinearLayer(input_size=self.latent_n, output_size=self.dist_size)
         self.m_feat = LinearLayer(input_size=2, output_size=self.dist_size)
-        self.transformer = nn.Transformer(d_model=256, nhead=8, num_encoder_layers=6, num_decoder_layers=6, dim_feedforward=2048, dropout=0.1)
+        self.transformer = nn.Transformer(d_model=self.dist_size*2, nhead=8, num_encoder_layers=6, num_decoder_layers=6, dim_feedforward=2048, dropout=0.1)
         self.compact_last = LinearLayer(input_size=self.dist_size*2, output_size=self.dist_size)
     
     # sampler
@@ -1096,3 +1097,16 @@ class EnvModel(nn.Module):
             "unique_z_list": unique_z_list,
             "z_list": z_list,
         }
+
+def concat(*data_list):
+    return torch.cat(data_list, 1)
+
+def gumbel_sampling(log_alpha, temp, margin=1e-4):
+    noise = log_alpha.new_empty(log_alpha.size()).uniform_(margin, 1 - margin)
+    gumbel_sample = -torch.log(-torch.log(noise))
+    return torch.div(log_alpha + gumbel_sample, temp)
+
+def log_density_concrete(log_alpha, log_sample, temp):
+    exp_term = log_alpha - temp * log_sample
+    log_prob = torch.sum(exp_term, -1) - 2.0 * torch.logsumexp(exp_term, -1)
+    return log_prob
