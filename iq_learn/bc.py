@@ -96,7 +96,7 @@ class BehaviorCloningLossCalculator:
         l2_loss = self.l2_weight * l2_norm
         bc_loss = neglogp + ent_loss + l2_loss
         result = self.vae_loss_function(bc_loss, mu, log_var)
-        kld_loss = result['KLD']
+        kld_loss = result['KLD_loss']
         loss = result['loss']
         return {
             "bc_actor_loss/neglogp": neglogp,
@@ -120,11 +120,11 @@ class BehaviorCloningLossCalculator:
         :return:
         """
         recons_loss = args[0]
-        mu = args[1].detach()
-        log_var = args[2].detach()
+        mu = args[1]
+        log_var = args[2]
         kld_weight = self.kld_weight
         kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim = 1), dim = 0)
-
+        kld_loss = torch.mean(kld_loss)
         loss = recons_loss + kld_weight * kld_loss
-        return {'loss': loss, 'Reconstruction_Loss':recons_loss.detach(), 'KLD':-kld_loss.detach()}
+        return {'loss': loss, 'Reconstruction_Loss':recons_loss.detach(), 'KLD_loss':kld_loss.detach()}
 

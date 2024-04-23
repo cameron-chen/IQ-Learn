@@ -50,7 +50,7 @@ class Memory(object):
         batch = self.sample(batch_size, False)
 
         # batch_state, batch_next_state, batch_action, batch_reward, batch_done = zip(
-        batch_state, batch_next_state, batch_action, batch_reward, batch_done, batch_cond, batch_dist_params = zip(
+        batch_state, batch_next_state, batch_action, batch_reward, batch_done, batch_cond, batch_traj_idx = zip(
             *batch)
         
 
@@ -64,7 +64,7 @@ class Memory(object):
         batch_next_state = np.array(batch_next_state)
         batch_action = np.array(batch_action)
         batch_cond = np.array(batch_cond)
-        batch_dist_params = np.array(batch_dist_params)
+        batch_traj_idx = np.array(batch_traj_idx)
 
         batch_state = torch.as_tensor(batch_state, dtype=torch.float, device=device)
         batch_next_state = torch.as_tensor(batch_next_state, dtype=torch.float, device=device)
@@ -74,7 +74,6 @@ class Memory(object):
         batch_reward = torch.as_tensor(batch_reward, dtype=torch.float, device=device).unsqueeze(1)
         batch_done = torch.as_tensor(batch_done, dtype=torch.float, device=device).unsqueeze(1)
         batch_cond = torch.as_tensor(batch_cond, dtype=torch.float, device=device)
-        batch_dist_params = torch.as_tensor(batch_dist_params, dtype=torch.float, device=device)
 
         # return batch_state, batch_next_state, batch_action, batch_reward, batch_done
-        return batch_state, batch_next_state, batch_action, batch_reward, batch_done, batch_cond, batch_dist_params   
+        return batch_state, batch_next_state, batch_action, batch_reward, batch_done, batch_cond, batch_traj_idx   

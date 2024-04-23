@@ -38,7 +38,8 @@ from typing import IO, Any, Dict
 import pickle
 from bc import BehaviorCloningLossCalculator
 from encoder.utils import *
-
+from torch.optim import Adam
+torch.autograd.set_detect_anomaly(True)
 torch.set_num_threads(2)
 
 def get_args(cfg: DictConfig):
@@ -147,20 +148,26 @@ def main(cfg: DictConfig):
     encoder = torch.load(checkpoint)
     encoder.train()
     encoder.to(device)
-    print(f"Encoder Loaded: {checkpoint}")
-    # Sample initial states from env
-    # state_0 = [env.reset()] * INITIAL_STATES
-    # if isinstance(state_0[0], LazyFrames):
-    #     state_0 = np.array(state_0) / 255.0
-    #     print("lazy frames detected")
-    # state_0 = torch.FloatTensor(np.array(state_0,dtype=np.float32)).to(args.device)
 
+    last_layers_to_unfreeze = ['z_logit_feat', 'm_feat', 'transformer', 'compact_last']
+
+    # Freeze all parameters first
+    for param in encoder.parameters():
+        param.requires_grad = False
+
+    # Unfreeze specific last layers by their names
+    for name, param in encoder.named_parameters():
+        if any(last_layer_name in name for last_layer_name in last_layers_to_unfreeze):
+            param.requires_grad = True
+
+    encoder_optimizer = Adam(params=encoder.parameters(), lr=3e-05, amsgrad=True)
+    print(f"Encoder Loaded: {checkpoint}, optimizer ready")
     # bc loss function
     # if args.method.enable_bc_actor_update:
     agent.loss_calculator = BehaviorCloningLossCalculator(
         ent_weight=1e-3,  # args.method.bc_ent_weight,
         l2_weight=0.0,  # args.method.bc_l2_weight,
-        kld_weight=1.0,  # args.method.bc_kld_weight,
+        kld_weight=10,  # args.method.bc_kld_weight,
     )
     agent.bc_alpha = args.method.bc_alpha
 
@@ -168,11 +175,23 @@ def main(cfg: DictConfig):
     if args.method.bc_init:
         agent.bc_update = types.MethodType(bc_update, agent)
         for learn_steps_bc in count():
+            print(f"BC step: {learn_steps_bc}")
             expert_batch = expert_memory_replay.get_samples(
                 agent.batch_size, agent.device
             )
-            expert_obs, _, expert_action, __, ___, expert_cond, expert_dist_params = expert_batch
-            mu, log_var = expert_dist_params[0], expert_dist_params[1]
+            expert_obs, _, expert_action, __, ___, expert_cond, true_traj_idx = expert_batch
+            emb_list = get_new_cond(
+                encoder, 
+                hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), 
+                hydra.utils.to_absolute_path('cond/temp_cond.pkl'), 
+                device,
+                true_traj_idx)
+            dist_params_list = emb_list["dist_params"]
+            dist_params_list = [dist_params_list[i] for i in true_traj_idx]
+            mu = [dist_params[0] for dist_params in dist_params_list]     
+            log_var = [dist_params[1] for dist_params in dist_params_list]
+            mu = torch.stack(mu, dim=0)
+            log_var = torch.stack(log_var, dim=0)
             losses = agent.bc_update(
                 expert_obs,
                 expert_action,
@@ -181,8 +200,13 @@ def main(cfg: DictConfig):
                 learn_steps_bc,
                 args.cond_type,
                 mu,
-                log_var
+                log_var,
+                encoder_optimizer
             )
+
+            # for name, param in encoder.named_parameters():
+            #     if any(last_layer_name in name for last_layer_name in last_layers_to_unfreeze):
+            #         print(f"Parameter: {name}, Gradient Norm: {param.grad.norm().item()}")
 
             # log losses
             if learn_steps_bc % 10 == 0:  # args.log_interval == 0:
@@ -207,7 +231,7 @@ def main(cfg: DictConfig):
                 # logger.log('eval/bc_episode_reward', returns, learn_steps_bc)
                 logger.dump(learn_steps_bc, ty="eval")
                 # refresh expert memory with new cond and new dist_params
-                get_new_cond(encoder, hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), hydra.utils.to_absolute_path('cond/temp_cond.pkl'), device)
+                emb_list = get_new_cond(encoder, hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), hydra.utils.to_absolute_path('cond/temp_cond.pkl'), device, None)
                 expert_memory_replay.load(hydra.utils.to_absolute_path(f'experts/{args.env.demo}'),
                               num_trajs=args.expert.demos,
                               sample_freq=args.expert.subsample_freq,
@@ -216,12 +240,13 @@ def main(cfg: DictConfig):
                               cond_type=args.cond_type,
                               cond_location=hydra.utils.to_absolute_path('cond/temp_cond.pkl'))
                 print(f'--> New expert memory size: {expert_memory_replay.size()}')
+            if learn_steps_bc % 1000 == 0:
+                save_dir = os.path.join(exp_dir, f"model-vae-{learn_steps_bc}.ckpt")
+                torch.save(encoder, save_dir)
             if learn_steps_bc == args.bc_steps:
                 learn_steps_bc += 1
                 print("Finished BC!")
                 break
-        save_dir = os.path.join(exp_dir, "model-vae.ckpt")
-        torch.save(encoder, save_dir)
         print(f"Encoder saved at {save_dir}. Skipping IQ-learn")
         return
     for epoch in count(): # n of episodes
@@ -279,7 +304,11 @@ def main(cfg: DictConfig):
                 done_no_lim = 0
             # if type(state) == np.ndarray:
                 # online_memory_replay.add((state, next_state, action, reward, done_no_lim, cond))
-            online_memory_replay.add((state, next_state, action, reward, done_no_lim, cond))
+            mu, log_var = encoder.get_dist_params()
+            mu = mu.detach().cpu().numpy()
+            log_var = log_var.detach().cpu().numpy()
+            dist_params = (mu, log_var)
+            online_memory_replay.add((state, next_state, action, reward, done_no_lim, cond, dist_params))
 
             if online_memory_replay.size() > INITIAL_MEMORY:
                 # Start learning
@@ -317,7 +346,7 @@ def main(cfg: DictConfig):
         # print('TRAIN\tEp {}\tAverage reward: {:.2f}\t'.format(epoch, np.mean(rewards_window)))
         save(agent, epoch, args, output_dir='results')
 
-def get_new_cond(encoder, expert_file, cond_file, device):
+def get_new_cond(encoder, expert_file, cond_file, device, traj_idx_list):
     
     full_loader = cheetah_full_loader(1, expert_file)
     encoder.post_obs_state._output_normal = True
@@ -327,7 +356,15 @@ def get_new_cond(encoder, expert_file, cond_file, device):
     b_idx = 0
     emb_list = {"num_m":[],"emb": [], "level":[], "num_z":[], "z":[], "dist_params":[]}
     count = 0
-    for obs_list, action_list, level_list in full_loader:
+    for index, (obs_list, action_list, level_list) in enumerate(full_loader):
+        if traj_idx_list is not None and index not in traj_idx_list:
+            emb_list["num_m"].extend([])
+            # emb_list["emb"].extend(results[-3])
+            emb_list["emb"].extend([])
+            emb_list["level"].extend([])
+            emb_list["num_z"].extend([])
+            emb_list["z"].extend([])
+            emb_list["dist_params"].extend([])
         # obs_list 100 1000 17
         # action_list 100 1000 6
         # trai_level_list 100
@@ -338,21 +375,21 @@ def get_new_cond(encoder, expert_file, cond_file, device):
         mean, std = encoder.get_dist_params()
         emb = reparameterize(mean, std)
         emb = emb.detach().cpu().numpy()
-        mean = mean.detach().cpu().numpy()
-        std = std.detach().cpu().numpy()
         emb_list["num_m"].extend([len(i) for i in results[-4]])
         # emb_list["emb"].extend(results[-3])
         emb_list["emb"].extend(emb)
         emb_list["level"].extend(level_list)
         emb_list["num_z"].extend([len(i) for i in results[-2]])
         emb_list["z"].extend(results[-1])
-        emb_list["dist_params"].extend((mean, std))
+        emb_list["dist_params"].append((mean, std))
         if b_idx >= 500:
             break
     ## --> Normalize the emb using z score normalization
     # emb_list["emb"] = zscore(emb_list["emb"])
-    with open(cond_file, 'wb') as f:
-        pickle.dump(emb_list, f)
+    if traj_idx_list is None:
+        with open(cond_file, 'wb') as f:
+            pickle.dump(emb_list, f)
+    return emb_list
 
 def reparameterize(mu, logvar):
     """
@@ -487,13 +524,13 @@ def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_type):
     args = self.args
     # policy_obs, policy_next_obs, policy_action, policy_reward, policy_done = policy_batch
     # expert_obs, expert_next_obs, expert_action, expert_reward, expert_done = expert_batch
-    policy_obs, policy_next_obs, policy_action, policy_reward, policy_done, policy_cond = policy_batch
-    expert_obs, expert_next_obs, expert_action, expert_reward, expert_done, expert_cond = expert_batch
+    policy_obs, policy_next_obs, policy_action, policy_reward, policy_done, policy_cond, policy_dist_params = policy_batch
+    expert_obs, expert_next_obs, expert_action, expert_reward, expert_done, expert_cond, expert_dist_params= expert_batch
 
     if args.only_expert_states:
         # Use policy actions instead of experts actions for IL with only observations
         # expert_batch = expert_obs, expert_next_obs, policy_action, expert_reward, expert_done
-        expert_batch = expert_obs, expert_next_obs, policy_action, expert_reward, expert_done, expert_cond
+        expert_batch = expert_obs, expert_next_obs, policy_action, expert_reward, expert_done, expert_cond, expert_dist_params
 
     batch = get_concat_samples(policy_batch, expert_batch, args)
     # obs, next_obs, action = batch[0:3]
@@ -561,12 +598,12 @@ def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_type):
         if not self.args.agent.vdice_actor:
             if self.args.offline:
                 obs = expert_batch[0]
-                cond = expert_batch[-1]
+                cond = expert_batch[-2]
                 act_demo = expert_batch[2]
             else:
                 # Use both policy and expert observations
                 obs = torch.cat([policy_batch[0], expert_batch[0]], dim=0)
-                cond = torch.cat([policy_batch[-1], expert_batch[-1]], dim=0)
+                cond = torch.cat([policy_batch[-2], expert_batch[-2]], dim=0)
                 act_demo = expert_batch[2]
             if not self.args.method.enable_bc_actor_update:
                 act_demo = None
@@ -588,7 +625,7 @@ def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_type):
             hard_update(self.critic_net, self.critic_target_net)
     return losses
 
-def bc_update(self, observation, action, condition, logger, step, cond_type, mu, log_var):
+def bc_update(self, observation, action, condition, logger, step, cond_type, mu, log_var, encoder_optimizer):
     # SAC version
     if self.actor:
         if cond_type == "none":
@@ -600,8 +637,10 @@ def bc_update(self, observation, action, condition, logger, step, cond_type, mu,
 
         # optimize actor
         self.actor_optimizer.zero_grad()
+        encoder_optimizer.zero_grad()
         loss.backward()
         self.actor_optimizer.step()
+        encoder_optimizer.step()
 
         # update critic
         # if step % self.actor_update_frequency == 0:

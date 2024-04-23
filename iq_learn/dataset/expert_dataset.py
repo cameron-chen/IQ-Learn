@@ -90,8 +90,7 @@ class ExpertDataset(Dataset):
         if cond_type!="none":
             self.conds = [conds["emb"][i] for i in perm]
             self.conds = self.conds[:num_trajectories]
-            self.dist_params = [conds["dist_params"][i] for i in perm]
-            self.dist_params = self.dist_params[:num_trajectories]
+            self.true_traj_idx_list = perm[:num_trajectories]
         else:
             self.conds = conds["emb"][:num_trajectories]
         # print("permuted condss:",self.conds)
@@ -107,7 +106,7 @@ class ExpertDataset(Dataset):
         #     traj_idx = 0
         if traj_idx<=len(self.conds):
             cond = self.conds[traj_idx]
-            dist_params = self.dist_params[traj_idx]
+            true_traj_idx = self.true_traj_idx_list[traj_idx]
         else:
             raise ValueError(f"Trajectory index {traj_idx} out of range")
         states = self.trajectories["states"][traj_idx][i]
@@ -130,7 +129,7 @@ class ExpertDataset(Dataset):
                 next_states,
                 self.trajectories["actions"][traj_idx][i],
                 self.trajectories["rewards"][traj_idx][i],
-                self.trajectories["dones"][traj_idx][i], cond, dist_params)
+                self.trajectories["dones"][traj_idx][i], cond, true_traj_idx)
 
 
 def load_trajectories(expert_location: str,

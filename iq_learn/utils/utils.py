@@ -164,8 +164,8 @@ def get_concat_samples(policy_batch, expert_batch, args):
     # online_batch_state, online_batch_next_state, online_batch_action, online_batch_reward, online_batch_done = policy_batch
 
     # expert_batch_state, expert_batch_next_state, expert_batch_action, expert_batch_reward, expert_batch_done = expert_batch
-    online_batch_state, online_batch_next_state, online_batch_action, online_batch_reward, online_batch_done, online_batch_cond = policy_batch
-    expert_batch_state, expert_batch_next_state, expert_batch_action, expert_batch_reward, expert_batch_done, expert_batch_cond = expert_batch
+    online_batch_state, online_batch_next_state, online_batch_action, online_batch_reward, online_batch_done, online_batch_cond, online_batch_dist_params = policy_batch
+    expert_batch_state, expert_batch_next_state, expert_batch_action, expert_batch_reward, expert_batch_done, expert_batch_cond, expert_batch_dist_params = expert_batch
     if args.method.type == "sqil":
         # convert policy reward to 0
         online_batch_reward = torch.zeros_like(online_batch_reward)
