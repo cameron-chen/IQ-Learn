@@ -179,22 +179,36 @@ def main(cfg: DictConfig):
             expert_batch = expert_memory_replay.get_samples(
                 agent.batch_size, agent.device
             )
-            expert_obs, _, expert_action, __, ___, expert_cond, true_traj_idx = expert_batch
+            expert_obs, _, expert_action, __, ___, expert_cond_detached, true_traj_idx = expert_batch
+            unique_idx = []
+            expert_obs_unique = []
+            expert_action_unique = []
+            for i, traj_idx in enumerate(true_traj_idx):
+                if traj_idx not in unique_idx:
+                    unique_idx.append(traj_idx)
+                    expert_obs_unique.append(expert_obs[i])
+                    expert_action_unique.append(expert_action[i])
+            expert_obs_unique = torch.stack(expert_obs_unique, dim=0)   
+            expert_action_unique = torch.stack(expert_action_unique, dim=0)
             emb_list = get_new_cond(
                 encoder, 
                 hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), 
                 hydra.utils.to_absolute_path('cond/temp_cond.pkl'), 
                 device,
-                true_traj_idx)
+                unique_idx)
             dist_params_list = emb_list["dist_params"]
-            dist_params_list = [dist_params_list[i] for i in true_traj_idx]
+            dist_params_list = [dist_params_list[i] for i in unique_idx]
             mu = [dist_params[0] for dist_params in dist_params_list]     
             log_var = [dist_params[1] for dist_params in dist_params_list]
             mu = torch.stack(mu, dim=0)
             log_var = torch.stack(log_var, dim=0)
+           
+            expert_cond_list = emb_list["emb"]
+            expert_cond_list = [expert_cond_list[i] for i in unique_idx]
+            expert_cond = torch.stack(expert_cond_list, dim=0)
             losses = agent.bc_update(
-                expert_obs,
-                expert_action,
+                expert_obs_unique,
+                expert_action_unique,
                 expert_cond,
                 logger,
                 learn_steps_bc,
@@ -374,7 +388,7 @@ def get_new_cond(encoder, expert_file, cond_file, device, traj_idx_list):
         results = encoder(obs_list, action_list, seq_size, init_size)
         mean, std = encoder.get_dist_params()
         emb = reparameterize(mean, std)
-        emb = emb.detach().cpu().numpy()
+        # emb = emb.detach().cpu().numpy()
         emb_list["num_m"].extend([len(i) for i in results[-4]])
         # emb_list["emb"].extend(results[-3])
         emb_list["emb"].extend(emb)
