@@ -143,11 +143,12 @@ def main(cfg: DictConfig):
     import sys
     sys.path.append('/home/zichang/proj/IQ-Learn/iq_learn/encoder')
     print("Current working directory: ", os.getcwd())
-    exp_dir = "/home/zichang/proj/IQ-Learn/iq_learn/encoder/experiments/cheetah_cond10/"
-    checkpoint = exp_dir+"model-vae.ckpt"
+    exp_dir = "/home/zichang/proj/IQ-Learn/iq_learn/encoder/experiments/cheetah_v0.1/"
+    checkpoint = exp_dir+"model-10.ckpt"
     encoder = torch.load(checkpoint)
     encoder.train()
     encoder.to(device)
+    encoder.instantiate_prob_encoder(args.cond_dim)
 
     last_layers_to_unfreeze = ['z_logit_feat', 'm_feat', 'transformer', 'compact_last']
 
@@ -246,6 +247,7 @@ def main(cfg: DictConfig):
                 logger.dump(learn_steps_bc, ty="eval")
                 # refresh expert memory with new cond and new dist_params
                 emb_list = get_new_cond(encoder, hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), hydra.utils.to_absolute_path('cond/temp_cond.pkl'), device, None)
+                expert_memory_replay.clear()
                 expert_memory_replay.load(hydra.utils.to_absolute_path(f'experts/{args.env.demo}'),
                               num_trajs=args.expert.demos,
                               sample_freq=args.expert.subsample_freq,
@@ -401,6 +403,9 @@ def get_new_cond(encoder, expert_file, cond_file, device, traj_idx_list):
     ## --> Normalize the emb using z score normalization
     # emb_list["emb"] = zscore(emb_list["emb"])
     if traj_idx_list is None:
+        # save numpy arrays for memory buffer
+        emb_list["emb"] = [i.detach().cpu().numpy() for i in emb_list["emb"]]
+        emb_list["dist_params"] = [(i[0].detach().cpu().numpy(), i[1].detach().cpu().numpy()) for i in emb_list["dist_params"]]
         with open(cond_file, 'wb') as f:
             pickle.dump(emb_list, f)
     return emb_list

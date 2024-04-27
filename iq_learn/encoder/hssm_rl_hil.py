@@ -5,6 +5,7 @@ from modules import *
 from utils import *
 import torch.nn as nn
 import numpy as np
+from transformer import ShallowTransformer
 class HierarchicalStateSpaceModel(nn.Module):
     def __init__(
         self,
@@ -25,7 +26,7 @@ class HierarchicalStateSpaceModel(nn.Module):
         ######################
         # distribution size ##
         ######################
-        self.dist_size = 20 # dist_size = cond_size*2
+        self.dist_size = 10 # dist_size = cond_size
         self.mean = -1
         self.std = -1
         self.latent_n = latent_n
@@ -158,11 +159,12 @@ class HierarchicalStateSpaceModel(nn.Module):
         ##########################
         # distribution generator #
         ##########################
-        self.z_logit_feat = LinearLayer(input_size=self.latent_n, output_size=self.dist_size)
-        self.m_feat = LinearLayer(input_size=2, output_size=self.dist_size)
-        self.transformer = nn.Transformer(d_model=self.dist_size*2, nhead=8, num_encoder_layers=6, num_decoder_layers=6, dim_feedforward=2048, dropout=0.1)
-        self.compact_last = LinearLayer(input_size=self.dist_size*2, output_size=self.dist_size)
+        self.z_logit_feat = None
+        self.m_feat = None
+        self.transformer = None
+        self.compact_last = None
     
+        self.prob_encoder = False
     # sampler
     def boundary_sampler(self, log_alpha):
         # sample and return corresponding logit
@@ -543,19 +545,20 @@ class HierarchicalStateSpaceModel(nn.Module):
         # self.transformer = nn.Transformer(d_model=256, nhead=8, num_encoder_layers=6, num_decoder_layers=6, dim_feedforward=2048, dropout=0.1)
         # self.compact_last = LinearLayer(input_size=self.dist_size*2, output_size=self.dist_size)
         
-        z_logit_feat = self.z_logit_feat(logit_tensors)
-        m_feat = self.m_feat(m_tensors)
-        
-        concated = torch.cat((z_logit_feat, m_feat), dim=2)
-        # 998 128 + 998 128 = 998 256
-        transformed = self.transformer(concated, concated)
-        last_token = transformed[:, -1, :]
-        # 1 256
-        compacted = self.compact_last(last_token)
-        dist_data_size = self.dist_size//2
-        # 1 128
-        self.mean = compacted[:, :dist_data_size] # 64
-        self.std = compacted[:, dist_data_size:] # 64
+        if self.prob_encoder:
+            z_logit_feat = self.z_logit_feat(logit_tensors)
+            m_feat = self.m_feat(m_tensors)
+            
+            concated = torch.cat((z_logit_feat, m_feat), dim=2)
+            # 998 128 + 998 128 = 998 256
+            transformed = self.transformer(concated, None)
+            # last_token = transformed[:, -1, :] # 1 1000 256 -> 1 256
+            last_token = transformed 
+            # 1 256
+            compacted = self.compact_last(last_token)
+            # 1 128
+            self.mean = compacted[:, :self.dist_size] # 64
+            self.std = compacted[:, self.dist_size:] # 64
         # print(f"logit shape: {z_logit_feat.shape}") # 64,998,10
         # print(f"m shape: {m_feat.shape}")
         # print(f"concated shape: {concated.shape}")
@@ -680,16 +683,38 @@ class HierarchicalStateSpaceModel(nn.Module):
             z_list_t
         ]
     
-    def get_dist(self):
-        # form a diag Gaussian using self.mean and self.std
-        mean = self.mean.cpu().detach().numpy()
-        std = self.std.cpu().detach().numpy()
-        distribution = np.random.normal(loc=64, scale=64, size=1000)
-        return distribution
+    # def get_dist(self):
+    #     # form a diag Gaussian using self.mean and self.std
+    #     mean = self.mean.cpu().detach().numpy()
+    #     std = self.std.cpu().detach().numpy()
+    #     distribution = np.random.normal(loc=64, scale=64, size=1000)
+    #     return distribution
         
     def get_dist_params(self):
         return self.mean, self.std
 
+    def instantiate_prob_encoder(self, dist_size, seq_len=1000):
+        '''
+        Instantiate the probability encoder
+        :param dist_size: size of the distribution, equal to the condition size
+        '''
+        self.dist_size = dist_size if dist_size is not None else 10
+        self.z_logit_feat = LinearLayer(input_size=self.latent_n, output_size=self.dist_size*2)
+        self.m_feat = LinearLayer(input_size=2, output_size=self.dist_size*2)
+        # self.transformer = nn.Transformer(d_model=self.dist_size*4, nhead=8, num_encoder_layers=6, num_decoder_layers=6, dim_feedforward=2048, dropout=0.1)
+        self.transformer = ShallowTransformer(
+            self.dist_size*4,
+            seq_len,
+            2,
+            key_hidden_size=self.dist_size*4, 
+            value_hidden_size=self.dist_size*4
+        )
+        self.compact_last = LinearLayer(input_size=self.dist_size*4, output_size=self.dist_size*2)
+
+        self.prob_encoder = True
+        return self.prob_encoder
+    
+        
     def abs_marginal(self, obs_data_list, action_list, seq_size, init_size, n_sample=3):
         #############
         # data size #
