@@ -693,27 +693,27 @@ class HierarchicalStateSpaceModel(nn.Module):
     def get_dist_params(self):
         return self.mean, self.std
 
-    def instantiate_prob_encoder(self, dist_size, seq_len=1000):
+    
+    
+    def instantiate_prob_encoder(self, dist_size=None, seq_len=1000, key_hidden_size=256,value_hidden_size=256):
         '''
         Instantiate the probability encoder
         :param dist_size: size of the distribution, equal to the condition size
         '''
         self.dist_size = dist_size if dist_size is not None else 10
-        self.z_logit_feat = LinearLayer(input_size=self.latent_n, output_size=self.dist_size*2)
-        self.m_feat = LinearLayer(input_size=2, output_size=self.dist_size*2)
-        # self.transformer = nn.Transformer(d_model=self.dist_size*4, nhead=8, num_encoder_layers=6, num_decoder_layers=6, dim_feedforward=2048, dropout=0.1)
+        self.z_logit_feat = LinearLayer(input_size=self.latent_n, output_size=int(key_hidden_size/2))
+        self.m_feat = LinearLayer(input_size=2, output_size=int(key_hidden_size/2))
         self.transformer = ShallowTransformer(
-            self.dist_size*4,
+            key_hidden_size,
             seq_len,
             2,
-            key_hidden_size=self.dist_size*4, 
-            value_hidden_size=self.dist_size*4
+            key_hidden_size=key_hidden_size, 
+            value_hidden_size=value_hidden_size
         )
-        self.compact_last = LinearLayer(input_size=self.dist_size*4, output_size=self.dist_size*2)
+        self.compact_last = LinearLayer(input_size=key_hidden_size, output_size=self.dist_size*2)
 
         self.prob_encoder = True
         return self.prob_encoder
-    
         
     def abs_marginal(self, obs_data_list, action_list, seq_size, init_size, n_sample=3):
         #############
