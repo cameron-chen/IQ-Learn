@@ -143,11 +143,12 @@ def main(cfg: DictConfig):
     import sys
     sys.path.append('/home/zichang/proj/IQ-Learn/iq_learn/encoder')
     print("Current working directory: ", os.getcwd())
-    exp_dir = "/home/zichang/proj/IQ-Learn/iq_learn/encoder/experiments/cheetah_cond10/"
-    checkpoint = exp_dir+"model-vae.ckpt"
+    exp_dir = "/home/zichang/proj/IQ-Learn/iq_learn/encoder/experiments/cheetah_v0.1/"
+    checkpoint = exp_dir+"model-10.ckpt"
     encoder = torch.load(checkpoint)
     encoder.train()
     encoder.to(device)
+    encoder.instantiate_prob_encoder()
 
     last_layers_to_unfreeze = ['z_logit_feat', 'm_feat', 'transformer', 'compact_last']
 
@@ -179,19 +180,26 @@ def main(cfg: DictConfig):
             expert_batch = expert_memory_replay.get_samples(
                 agent.batch_size, agent.device
             )
-            expert_obs, _, expert_action, __, ___, expert_cond, true_traj_idx = expert_batch
+            expert_obs, _, expert_action, __, ___, expert_cond_detached, true_traj_idx = expert_batch
             emb_list = get_new_cond(
                 encoder, 
                 hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), 
                 hydra.utils.to_absolute_path('cond/temp_cond.pkl'), 
                 device,
                 true_traj_idx)
-            dist_params_list = emb_list["dist_params"]
-            dist_params_list = [dist_params_list[i] for i in true_traj_idx]
+            unique = []
+            dist_params_list = []
+            for i in true_traj_idx:
+                if i not in unique:
+                    unique.append(i)
+                    dist_params_list.append(emb_list["dist_params"][i])
             mu = [dist_params[0] for dist_params in dist_params_list]     
             log_var = [dist_params[1] for dist_params in dist_params_list]
             mu = torch.stack(mu, dim=0)
             log_var = torch.stack(log_var, dim=0)
+           
+            expert_cond_list = emb_list["emb"]
+            expert_cond = torch.stack(expert_cond_list, dim=0)
             losses = agent.bc_update(
                 expert_obs,
                 expert_action,
@@ -232,6 +240,7 @@ def main(cfg: DictConfig):
                 logger.dump(learn_steps_bc, ty="eval")
                 # refresh expert memory with new cond and new dist_params
                 emb_list = get_new_cond(encoder, hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), hydra.utils.to_absolute_path('cond/temp_cond.pkl'), device, None)
+                expert_memory_replay.clear()
                 expert_memory_replay.load(hydra.utils.to_absolute_path(f'experts/{args.env.demo}'),
                               num_trajs=args.expert.demos,
                               sample_freq=args.expert.subsample_freq,
@@ -353,40 +362,51 @@ def get_new_cond(encoder, expert_file, cond_file, device, traj_idx_list):
     encoder._output_normal = True
     seq_size = full_loader.dataset.seq_size
     init_size = 1
-    b_idx = 0
     emb_list = {"num_m":[],"emb": [], "level":[], "num_z":[], "z":[], "dist_params":[]}
-    count = 0
-    for index, (obs_list, action_list, level_list) in enumerate(full_loader):
-        if traj_idx_list is not None and index not in traj_idx_list:
-            emb_list["num_m"].extend([])
+    if traj_idx_list is not None:
+    # if False:
+        # training, forward only the unique indexes
+        dataset = []
+        for index, (obs_list, action_list, level_list) in enumerate(full_loader):
+            dataset.append((obs_list, action_list, level_list))
+        for i in traj_idx_list:
+            (obs_list, action_list, level_list) = dataset[i]
+            obs_list = obs_list.to(device)
+            action_list = action_list.to(device)
+            results = encoder(obs_list, action_list, seq_size, init_size)
+            mean, std = encoder.get_dist_params()
+            emb = reparameterize(mean, std)
+            # emb = emb.detach().cpu().numpy()
+            emb_list["num_m"].extend([len(i) for i in results[-4]])
             # emb_list["emb"].extend(results[-3])
-            emb_list["emb"].extend([])
-            emb_list["level"].extend([])
-            emb_list["num_z"].extend([])
-            emb_list["z"].extend([])
-            emb_list["dist_params"].extend([])
-        # obs_list 100 1000 17
-        # action_list 100 1000 6
-        # trai_level_list 100
-        b_idx += 1
-        obs_list = obs_list.to(device)
-        action_list = action_list.to(device)
-        results = encoder(obs_list, action_list, seq_size, init_size)
-        mean, std = encoder.get_dist_params()
-        emb = reparameterize(mean, std)
-        emb = emb.detach().cpu().numpy()
-        emb_list["num_m"].extend([len(i) for i in results[-4]])
-        # emb_list["emb"].extend(results[-3])
-        emb_list["emb"].extend(emb)
-        emb_list["level"].extend(level_list)
-        emb_list["num_z"].extend([len(i) for i in results[-2]])
-        emb_list["z"].extend(results[-1])
-        emb_list["dist_params"].append((mean, std))
-        if b_idx >= 500:
-            break
-    ## --> Normalize the emb using z score normalization
-    # emb_list["emb"] = zscore(emb_list["emb"])
-    if traj_idx_list is None:
+            emb_list["emb"].extend(emb)
+            emb_list["level"].extend(level_list)
+            emb_list["num_z"].extend([len(i) for i in results[-2]])
+            emb_list["z"].extend(results[-1])
+            emb_list["dist_params"].append((mean, std))
+    else: # updating expert memory, forward all
+        for index, (obs_list, action_list, level_list) in enumerate(full_loader):
+            # obs_list 100 1000 17
+            # action_list 100 1000 6
+            # trai_level_list 100
+            obs_list = obs_list.to(device)
+            action_list = action_list.to(device)
+            results = encoder(obs_list, action_list, seq_size, init_size)
+            mean, std = encoder.get_dist_params()
+            emb = reparameterize(mean, std)
+            # emb = emb.detach().cpu().numpy()
+            emb_list["num_m"].extend([len(i) for i in results[-4]])
+            # emb_list["emb"].extend(results[-3])
+            emb_list["emb"].extend(emb)
+            emb_list["level"].extend(level_list)
+            emb_list["num_z"].extend([len(i) for i in results[-2]])
+            emb_list["z"].extend(results[-1])
+            emb_list["dist_params"].append((mean, std))
+        ## --> Normalize the emb using z score normalization
+        # emb_list["emb"] = zscore(emb_list["emb"])
+        # save numpy arrays for file
+        emb_list["emb"] = [i.detach().cpu().numpy() for i in emb_list["emb"]]
+        emb_list["dist_params"] = [(i[0].detach().cpu().numpy(), i[1].detach().cpu().numpy()) for i in emb_list["dist_params"]]
         with open(cond_file, 'wb') as f:
             pickle.dump(emb_list, f)
     return emb_list

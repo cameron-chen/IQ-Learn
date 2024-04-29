@@ -81,7 +81,8 @@ class SAC(object):
         if isinstance(state, np.ndarray):
             state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
         elif isinstance(state, tuple) or isinstance(state, list):
-            state = [torch.FloatTensor(s).to(self.device).unsqueeze(0) for s in state]
+            #  if state is not tensor then convert it to tensor else keep it that way
+            state = [torch.FloatTensor(s).to(self.device).unsqueeze(0) if isinstance(s, np.ndarray) or isinstance(s, list) else s.unsqueeze(0) for s in state]
         # assert len(state)==2
         dist = self.actor(state)
         action = dist.sample() if sample else dist.mean

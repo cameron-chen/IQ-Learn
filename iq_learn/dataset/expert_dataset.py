@@ -88,7 +88,10 @@ class ExpertDataset(Dataset):
         # apply permutation to cond
         # print("perm:",perm)
         if cond_type!="none":
-            self.conds = [conds["emb"][i] for i in perm]
+            if type(conds["emb"][0])==torch.Tensor:
+                self.conds = [conds["emb"][i].detach().cpu().numpy() for i in perm]
+            else:
+                self.conds = [conds["emb"][i] for i in perm]
             self.conds = self.conds[:num_trajectories]
             self.true_traj_idx_list = perm[:num_trajectories]
         else:
