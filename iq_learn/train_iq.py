@@ -187,7 +187,12 @@ def main(cfg: DictConfig):
                 hydra.utils.to_absolute_path('cond/temp_cond.pkl'), 
                 device,
                 true_traj_idx)
-            dist_params_list = emb_list["dist_params"]
+            unique = []
+            dist_params_list = []
+            for i in true_traj_idx:
+                if i not in unique:
+                    unique.append(i)
+                    dist_params_list.append(emb_list["dist_params"][i])
             mu = [dist_params[0] for dist_params in dist_params_list]     
             log_var = [dist_params[1] for dist_params in dist_params_list]
             mu = torch.stack(mu, dim=0)
