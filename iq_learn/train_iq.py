@@ -39,6 +39,7 @@ import pickle
 from bc import BehaviorCloningLossCalculator
 from encoder.utils import *
 from torch.optim import Adam
+import sys
 torch.autograd.set_detect_anomaly(True)
 torch.set_num_threads(2)
 
@@ -64,7 +65,7 @@ def main(cfg: DictConfig):
             sync_tensorboard=True, 
             reinit=True, 
             config=args, 
-            name=f"bc_init={args.method.bc_init} bc_alpha={args.method.bc_alpha}"
+            name=f"cond_dim={args.cond_dim} method.kld_alpha={args.method.kld_alpha}"
         )
 
     # set seeds
@@ -140,7 +141,7 @@ def main(cfg: DictConfig):
     # print work dir
     # change work dir to encoder dir
     # os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
-    import sys
+    
     sys.path.append('/home/zichang/proj/IQ-Learn/iq_learn/encoder')
     print("Current working directory: ", os.getcwd())
     exp_dir = "/home/zichang/proj/IQ-Learn/iq_learn/encoder/experiments/cheetah_v0.1/"
@@ -148,7 +149,7 @@ def main(cfg: DictConfig):
     encoder = torch.load(checkpoint)
     encoder.train()
     encoder.to(device)
-    encoder.instantiate_prob_encoder()
+    encoder.instantiate_prob_encoder(dist_size=args.cond_dim)
 
     last_layers_to_unfreeze = ['z_logit_feat', 'm_feat', 'transformer', 'compact_last']
 
@@ -168,13 +169,21 @@ def main(cfg: DictConfig):
     agent.loss_calculator = BehaviorCloningLossCalculator(
         ent_weight=1e-3,  # args.method.bc_ent_weight,
         l2_weight=0.0,  # args.method.bc_l2_weight,
-        kld_weight=10,  # args.method.bc_kld_weight,
+        kld_weight=args.method.kld_alpha,  # args.method.bc_kld_weight,
     )
     agent.bc_alpha = args.method.bc_alpha
-
+    unique_temp_cond_file = f"cond/cond_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_temp_cond.pkl"
+    print(f"-> Unique temp cond file: {unique_temp_cond_file}")
+    
     # BC initialization
     if args.method.bc_init:
         agent.bc_update = types.MethodType(bc_update, agent)
+        cond_read_file = hydra.utils.to_absolute_path(f'cond/{args.env.cond}')
+        if os.path.isfile(cond_read_file):
+            # Load data from single file.
+            with open(cond_read_file, 'rb') as f:
+                emb_list = read_file(cond_read_file, f)
+        logit_m = emb_list["logit_m"]
         for learn_steps_bc in count():
             print(f"BC step: {learn_steps_bc}")
             expert_batch = expert_memory_replay.get_samples(
@@ -183,8 +192,7 @@ def main(cfg: DictConfig):
             expert_obs, _, expert_action, __, ___, expert_cond_detached, true_traj_idx = expert_batch
             emb_list = get_new_cond(
                 encoder, 
-                hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), 
-                hydra.utils.to_absolute_path('cond/temp_cond.pkl'), 
+                logit_m, 
                 device,
                 true_traj_idx)
             unique = []
@@ -239,7 +247,12 @@ def main(cfg: DictConfig):
                 # logger.log('eval/bc_episode_reward', returns, learn_steps_bc)
                 logger.dump(learn_steps_bc, ty="eval")
                 # refresh expert memory with new cond and new dist_params
-                emb_list = get_new_cond(encoder, hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), hydra.utils.to_absolute_path('cond/temp_cond.pkl'), device, None)
+                emb_list = update_expert_memory(
+                    encoder, 
+                    hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), 
+                    hydra.utils.to_absolute_path(unique_temp_cond_file), 
+                    device)
+                logit_m = emb_list["logit_m"]
                 expert_memory_replay.clear()
                 expert_memory_replay.load(hydra.utils.to_absolute_path(f'experts/{args.env.demo}'),
                               num_trajs=args.expert.demos,
@@ -247,17 +260,19 @@ def main(cfg: DictConfig):
                               seed=args.seed + 42,
                               cond_dim=args.cond_dim,
                               cond_type=args.cond_type,
-                              cond_location=hydra.utils.to_absolute_path('cond/temp_cond.pkl'))
+                              cond_location=hydra.utils.to_absolute_path(unique_temp_cond_file))
                 print(f'--> New expert memory size: {expert_memory_replay.size()}')
-            if learn_steps_bc % 1000 == 0:
-                save_dir = os.path.join(exp_dir, f"model-vae-{learn_steps_bc}.ckpt")
+            if learn_steps_bc % 500 == 0 and learn_steps_bc > 0:
+                unique_encoder_file = f"cond_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_step{learn_steps_bc}.ckpt"
+                save_dir = os.path.join(exp_dir, unique_encoder_file)
                 torch.save(encoder, save_dir)
+                print(f"Encoder saved at {save_dir}")
             if learn_steps_bc == args.bc_steps:
                 learn_steps_bc += 1
                 print("Finished BC!")
                 break
-        print(f"Encoder saved at {save_dir}. Skipping IQ-learn")
         return
+    print("Start IQ-learn")
     for epoch in count(): # n of episodes
         state = env.reset()
         episode_reward = 0
@@ -313,11 +328,8 @@ def main(cfg: DictConfig):
                 done_no_lim = 0
             # if type(state) == np.ndarray:
                 # online_memory_replay.add((state, next_state, action, reward, done_no_lim, cond))
-            mu, log_var = encoder.get_dist_params()
-            mu = mu.detach().cpu().numpy()
-            log_var = log_var.detach().cpu().numpy()
-            dist_params = (mu, log_var)
-            online_memory_replay.add((state, next_state, action, reward, done_no_lim, cond, dist_params))
+            online_traj_idx = -1
+            online_memory_replay.add((state, next_state, action, reward, done_no_lim, cond, online_traj_idx))
 
             if online_memory_replay.size() > INITIAL_MEMORY:
                 # Start learning
@@ -355,60 +367,51 @@ def main(cfg: DictConfig):
         # print('TRAIN\tEp {}\tAverage reward: {:.2f}\t'.format(epoch, np.mean(rewards_window)))
         save(agent, epoch, args, output_dir='results')
 
-def get_new_cond(encoder, expert_file, cond_file, device, traj_idx_list):
-    
+def get_new_cond(encoder, logit_m, device, traj_idx_list):
+    new_emb_list = {"emb": [], "dist_params":[], "logit_m":[]}
+    for i in traj_idx_list:
+        logit_arrays, m_arrays = logit_m[i]
+        logit = torch.tensor(logit_arrays).to(device)
+        m = torch.tensor(m_arrays).to(device)
+        cond = encoder.get_dist(logit, m)
+        mu, logvar = encoder.get_dist_params()
+        new_emb_list["emb"].append(cond)
+        new_emb_list["dist_params"].append((mu, logvar))
+    return new_emb_list
+
+def update_expert_memory(encoder, expert_file, cond_save_file, device):
     full_loader = cheetah_full_loader(1, expert_file)
     encoder.post_obs_state._output_normal = True
     encoder._output_normal = True
     seq_size = full_loader.dataset.seq_size
     init_size = 1
-    emb_list = {"num_m":[],"emb": [], "level":[], "num_z":[], "z":[], "dist_params":[]}
-    if traj_idx_list is not None:
-    # if False:
-        # training, forward only the unique indexes
-        dataset = []
-        for index, (obs_list, action_list, level_list) in enumerate(full_loader):
-            dataset.append((obs_list, action_list, level_list))
-        for i in traj_idx_list:
-            (obs_list, action_list, level_list) = dataset[i]
-            obs_list = obs_list.to(device)
-            action_list = action_list.to(device)
-            results = encoder(obs_list, action_list, seq_size, init_size)
-            mean, std = encoder.get_dist_params()
-            emb = reparameterize(mean, std)
-            # emb = emb.detach().cpu().numpy()
-            emb_list["num_m"].extend([len(i) for i in results[-4]])
-            # emb_list["emb"].extend(results[-3])
-            emb_list["emb"].extend(emb)
-            emb_list["level"].extend(level_list)
-            emb_list["num_z"].extend([len(i) for i in results[-2]])
-            emb_list["z"].extend(results[-1])
-            emb_list["dist_params"].append((mean, std))
-    else: # updating expert memory, forward all
-        for index, (obs_list, action_list, level_list) in enumerate(full_loader):
-            # obs_list 100 1000 17
-            # action_list 100 1000 6
-            # trai_level_list 100
-            obs_list = obs_list.to(device)
-            action_list = action_list.to(device)
-            results = encoder(obs_list, action_list, seq_size, init_size)
-            mean, std = encoder.get_dist_params()
-            emb = reparameterize(mean, std)
-            # emb = emb.detach().cpu().numpy()
-            emb_list["num_m"].extend([len(i) for i in results[-4]])
-            # emb_list["emb"].extend(results[-3])
-            emb_list["emb"].extend(emb)
-            emb_list["level"].extend(level_list)
-            emb_list["num_z"].extend([len(i) for i in results[-2]])
-            emb_list["z"].extend(results[-1])
-            emb_list["dist_params"].append((mean, std))
-        ## --> Normalize the emb using z score normalization
-        # emb_list["emb"] = zscore(emb_list["emb"])
-        # save numpy arrays for file
-        emb_list["emb"] = [i.detach().cpu().numpy() for i in emb_list["emb"]]
-        emb_list["dist_params"] = [(i[0].detach().cpu().numpy(), i[1].detach().cpu().numpy()) for i in emb_list["dist_params"]]
-        with open(cond_file, 'wb') as f:
-            pickle.dump(emb_list, f)
+    emb_list = {"num_m":[],"emb": [], "level":[], "num_z":[], "z":[], "dist_params":[], "logit_m":[]}
+    for index, (obs_list, action_list, level_list) in enumerate(full_loader):
+        # obs_list 100 1000 17
+        # action_list 100 1000 6
+        # trai_level_list 100
+        obs_list = obs_list.to(device)
+        action_list = action_list.to(device)
+        results = encoder(obs_list, action_list, seq_size, init_size)
+        mean, std = encoder.get_dist_params()
+        emb = reparameterize(mean, std)
+        # emb = emb.detach().cpu().numpy()
+        logit_arrays, m_arrays = encoder.get_logit_m()
+        emb_list["num_m"].extend([len(i) for i in results[-4]])
+        # emb_list["emb"].extend(results[-3])
+        emb_list["emb"].extend(emb)
+        emb_list["level"].extend(level_list)
+        emb_list["num_z"].extend([len(i) for i in results[-2]])
+        emb_list["z"].extend(results[-1])
+        emb_list["dist_params"].append((mean, std))
+        emb_list["logit_m"].append((logit_arrays, m_arrays))
+    ## --> Normalize the emb using z score normalization
+    # emb_list["emb"] = zscore(emb_list["emb"])
+    # save numpy arrays for file
+    emb_list["emb"] = [i.detach().cpu().numpy() for i in emb_list["emb"]]
+    emb_list["dist_params"] = [(i[0].detach().cpu().numpy(), i[1].detach().cpu().numpy()) for i in emb_list["dist_params"]]
+    with open(cond_save_file, 'wb') as f:
+        pickle.dump(emb_list, f)
     return emb_list
 
 def reparameterize(mu, logvar):

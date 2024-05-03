@@ -18,3 +18,4 @@ method:
   enable_bc_critic_update: False
   enable_bc_actor_update: False
   bc_alpha: 0.5
+  kld_alpha: 1

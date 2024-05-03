@@ -546,6 +546,8 @@ class HierarchicalStateSpaceModel(nn.Module):
         # self.compact_last = LinearLayer(input_size=self.dist_size*2, output_size=self.dist_size)
         
         if self.prob_encoder:
+            self.logit_tensors = logit_tensors
+            self.m_tensors = m_tensors
             z_logit_feat = self.z_logit_feat(logit_tensors)
             m_feat = self.m_feat(m_tensors)
             
@@ -693,8 +695,48 @@ class HierarchicalStateSpaceModel(nn.Module):
     def get_dist_params(self):
         return self.mean, self.std
 
+    def get_logit_m(self):
+        logit_arrays = [i.cpu().detach().numpy() for i in self.logit_tensors]
+        m_arrays = [i.cpu().detach().numpy() for i in self.m_tensors]
+        return logit_arrays, m_arrays
+    
+    def get_dist(self, logit_tensors, m_tensors):
+        """
+        Forward the logit and m tensors to get the distribution sample
+        """
+        self.logit_tensors = logit_tensors
+        self.m_tensors = m_tensors
+        z_logit_feat = self.z_logit_feat(logit_tensors)
+        m_feat = self.m_feat(m_tensors)
+        
+        concated = torch.cat((z_logit_feat, m_feat), dim=2)
+        # 998 128 + 998 128 = 998 256
+        transformed = self.transformer(concated, None)
+        # last_token = transformed[:, -1, :] # 1 1000 256 -> 1 256
+        last_token = transformed 
+        # 1 256
+        compacted = self.compact_last(last_token)
+        # 1 128
+        self.mean = compacted[:, :self.dist_size] # 64
+        self.std = compacted[:, self.dist_size:] # 64
+
+        def reparameterize(mu, logvar):
+            """
+            Reparameterization trick to sample from N(mu, var) from
+            N(0,1).
+            :param mu: (Tensor) Mean of the latent Gaussian [B x D]
+            :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
+            :return: (Tensor) [B x D]
+            """
+            std = torch.exp(0.5 * logvar)
+            eps = torch.randn_like(std)
+            return eps * std + mu
+        cond = reparameterize(self.mean, self.std)
+        cond = cond.squeeze(0)
+        return cond
     
     
+
     def instantiate_prob_encoder(self, dist_size=None, seq_len=1000, key_hidden_size=256,value_hidden_size=256):
         '''
         Instantiate the probability encoder
