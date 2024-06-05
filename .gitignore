@@ -151,3 +151,4 @@ iq_learn/encoder/wandb
 iq_learn/encoder/outputs
 iq_learn/encoder/results
 iq_learn/encoder/results_best
+iq_learn/utils/evolution.py
