@@ -65,7 +65,7 @@ def main(cfg: DictConfig):
             sync_tensorboard=True, 
             reinit=True, 
             config=args, 
-            name=f"cond_dim={args.cond_dim} method.kld_alpha={args.method.kld_alpha}"
+            name=f"{args.env.name} cond_dim={args.cond_dim} method.kld_alpha={args.method.kld_alpha}"
         )
 
     # set seeds
@@ -144,14 +144,14 @@ def main(cfg: DictConfig):
     
     sys.path.append('/home/zichang/proj/IQ-Learn/iq_learn/encoder')
     print("Current working directory: ", os.getcwd())
-    exp_dir = "/home/zichang/proj/IQ-Learn/iq_learn/encoder/experiments/cheetah_v0.1/"
-    checkpoint = exp_dir+"model-10.ckpt"
+    exp_dir = args.exp_dir
+    checkpoint = exp_dir + args.encoder
     encoder = torch.load(checkpoint)
     encoder.train()
     encoder.to(device)
     encoder.instantiate_prob_encoder(dist_size=args.cond_dim)
 
-    last_layers_to_unfreeze = ['z_logit_feat', 'm_feat', 'transformer', 'compact_last']
+    last_layers_to_unfreeze = ['z_logit_feat', 'm_feat', 'transformer', 'compact_last', 'mu_layer','logvar_layer']
 
     # Freeze all parameters first
     for param in encoder.parameters():
@@ -172,7 +172,10 @@ def main(cfg: DictConfig):
         kld_weight=args.method.kld_alpha,  # args.method.bc_kld_weight,
     )
     agent.bc_alpha = args.method.bc_alpha
-    unique_temp_cond_file = f"cond/cond_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_temp_cond.pkl"
+    # encoder is model.ckpt, remove ".ckpt"
+    encoder_name = args.encoder.split(".")[0]
+    unique_temp_cond_file = f"cond/temp_{args.env.name}_{encoder_name}.pkl"
+    # unique_temp_cond_file= "cond/temp_cond.pkl"
     print(f"-> Unique temp cond file: {unique_temp_cond_file}")
     
     # BC initialization
@@ -184,8 +187,10 @@ def main(cfg: DictConfig):
             with open(cond_read_file, 'rb') as f:
                 emb_list = read_file(cond_read_file, f)
         logit_m = emb_list["logit_m"]
+        logit_array_0, m_array_0 = logit_m[0]
+        first_mu_0 = get_mu_logvar(logit_array_0, m_array_0, encoder, device)[1].detach().cpu().numpy()
         for learn_steps_bc in count():
-            print(f"BC step: {learn_steps_bc}")
+            # print(f"BC step: {learn_steps_bc}")
             expert_batch = expert_memory_replay.get_samples(
                 agent.batch_size, agent.device
             )
@@ -225,15 +230,23 @@ def main(cfg: DictConfig):
             #         print(f"Parameter: {name}, Gradient Norm: {param.grad.norm().item()}")
 
             # log losses
+            
             if learn_steps_bc % 10 == 0:  # args.log_interval == 0:
+                # test: log the l2 norm between the latest latent mean and the first latent mean every 10 steps
+                _, mu_0, __ = get_mu_logvar(logit_array_0, m_array_0, encoder, device)
+                mu_0 = mu_0.detach().cpu().numpy()
+                l2_norm = np.linalg.norm(mu_0 - first_mu_0)
+
+                # print(f"Step: {learn_steps_bc}, L2 Norm: {l2_norm.item()}")
+                losses["mean_l2_norm"] = l2_norm.item()
                 for key, loss in losses.items():
                     writer.add_scalar(key, loss, global_step=learn_steps_bc)
-
+                
                 logger.dump(learn_steps_bc)
 
             # eval every n steps
             if learn_steps_bc % 100 == 0:  # args.env.eval_interval == 0:
-                eval_num = 2 # TODO: change to 2 for training
+                eval_num = 0 # TODO: change to 2 for training
                 for eval_index in range(eval_num):
                     # low ability level
                     eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index)
@@ -262,16 +275,18 @@ def main(cfg: DictConfig):
                               cond_type=args.cond_type,
                               cond_location=hydra.utils.to_absolute_path(unique_temp_cond_file))
                 print(f'--> New expert memory size: {expert_memory_replay.size()}')
-            if learn_steps_bc % 500 == 0 and learn_steps_bc > 0:
-                unique_encoder_file = f"cond_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_step{learn_steps_bc}.ckpt"
+            # save the encoder every 500 steps
+            if learn_steps_bc % 10 == 0 and learn_steps_bc > 0:
+                unique_encoder_file = f"cond_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_betaB_step{learn_steps_bc}.ckpt"
                 save_dir = os.path.join(exp_dir, unique_encoder_file)
                 torch.save(encoder, save_dir)
                 print(f"Encoder saved at {save_dir}")
+            # test: calculate the l2 norm between the latest latent mean and the first latent mean every 10 steps
             if learn_steps_bc == args.bc_steps:
                 learn_steps_bc += 1
                 print("Finished BC!")
                 break
-        return
+        return # TODO: remove this to enable IQ-learn after bc-init
     print("Start IQ-learn")
     for epoch in count(): # n of episodes
         state = env.reset()
@@ -366,15 +381,20 @@ def main(cfg: DictConfig):
         logger.dump(learn_steps, save=begin_learn)
         # print('TRAIN\tEp {}\tAverage reward: {:.2f}\t'.format(epoch, np.mean(rewards_window)))
         save(agent, epoch, args, output_dir='results')
+def get_mu_logvar(logit_arrays, m_arrays, encoder, device):
+    logit_arrays = np.array(logit_arrays)
+    m_arrays = np.array(m_arrays)
+    logit = torch.tensor(logit_arrays).to(device)
+    m = torch.tensor(m_arrays).to(device)
+    cond = encoder.get_dist(logit, m)
+    mu, logvar = encoder.get_dist_params()
+    return cond, mu, logvar
 
 def get_new_cond(encoder, logit_m, device, traj_idx_list):
     new_emb_list = {"emb": [], "dist_params":[], "logit_m":[]}
     for i in traj_idx_list:
         logit_arrays, m_arrays = logit_m[i]
-        logit = torch.tensor(logit_arrays).to(device)
-        m = torch.tensor(m_arrays).to(device)
-        cond = encoder.get_dist(logit, m)
-        mu, logvar = encoder.get_dist_params()
+        cond, mu, logvar = get_mu_logvar(logit_arrays, m_arrays, encoder, device)
         new_emb_list["emb"].append(cond)
         new_emb_list["dist_params"].append((mu, logvar))
     return new_emb_list

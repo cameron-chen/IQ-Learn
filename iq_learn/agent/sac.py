@@ -162,7 +162,7 @@ class SAC(object):
             if act_demo is not None:
                 act_len = act_demo.shape[0]
                 obs_demo, cond_demo = _obs[-act_len:], cond[-act_len:]
-                bc_metrics = self.loss_calculator(self, (obs_demo, cond_demo), act_demo)
+                bc_metrics = self.loss_calculator(self, (obs_demo, cond_demo), act_demo, None, None)
             else: 
                 bc_metrics = None
         else:
@@ -170,7 +170,7 @@ class SAC(object):
             if act_demo is not None:
                 act_len = act_demo.shape[0]
                 obs_demo = obs[-act_len:]
-                bc_metrics = self.loss_calculator(self, obs_demo, act_demo)
+                bc_metrics = self.loss_calculator(self, obs_demo, act_demo, None, None)
             else: 
                 bc_metrics = None
 
