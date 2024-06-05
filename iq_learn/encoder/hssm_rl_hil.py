@@ -5,7 +5,7 @@ from modules import *
 from utils import *
 import torch.nn as nn
 import numpy as np
-from transformer import ShallowTransformer
+from transformer import ShallowTransformer, DeepTransformer
 class HierarchicalStateSpaceModel(nn.Module):
     def __init__(
         self,
@@ -557,10 +557,14 @@ class HierarchicalStateSpaceModel(nn.Module):
             # last_token = transformed[:, -1, :] # 1 1000 256 -> 1 256
             last_token = transformed 
             # 1 256
-            compacted = self.compact_last(last_token)
-            # 1 128
-            self.mean = compacted[:, :self.dist_size] # 64
-            self.std = compacted[:, self.dist_size:] # 64
+            # compacted = self.compact_last(last_token)
+            # # 1 128
+            # self.mean = compacted[:, :self.dist_size] # 64
+            # self.std = compacted[:, self.dist_size:] # 64
+            self.mean = self.mu_layer(last_token)
+            self.std = self.logvar_layer(last_token)
+
+            
         # print(f"logit shape: {z_logit_feat.shape}") # 64,998,10
         # print(f"m shape: {m_feat.shape}")
         # print(f"concated shape: {concated.shape}")
@@ -715,11 +719,12 @@ class HierarchicalStateSpaceModel(nn.Module):
         # last_token = transformed[:, -1, :] # 1 1000 256 -> 1 256
         last_token = transformed 
         # 1 256
-        compacted = self.compact_last(last_token)
-        # 1 128
-        self.mean = compacted[:, :self.dist_size] # 64
-        self.std = compacted[:, self.dist_size:] # 64
-
+        # compacted = self.compact_last(last_token)
+        # # 1 128
+        # self.mean = compacted[:, :self.dist_size] # 64
+        # self.std = compacted[:, self.dist_size:] # 64
+        self.mean = self.mu_layer(last_token)
+        self.std = self.logvar_layer(last_token)
         def reparameterize(mu, logvar):
             """
             Reparameterization trick to sample from N(mu, var) from
@@ -745,15 +750,16 @@ class HierarchicalStateSpaceModel(nn.Module):
         self.dist_size = dist_size if dist_size is not None else 10
         self.z_logit_feat = LinearLayer(input_size=self.latent_n, output_size=int(key_hidden_size/2))
         self.m_feat = LinearLayer(input_size=2, output_size=int(key_hidden_size/2))
-        self.transformer = ShallowTransformer(
+        self.transformer = DeepTransformer(
             key_hidden_size,
             seq_len,
-            2,
             key_hidden_size=key_hidden_size, 
-            value_hidden_size=value_hidden_size
+            value_hidden_size=value_hidden_size,
+            num_blocks=1
         )
         self.compact_last = LinearLayer(input_size=key_hidden_size, output_size=self.dist_size*2)
-
+        self.mu_layer = LinearLayer(input_size=key_hidden_size, output_size=self.dist_size)
+        self.logvar_layer = LinearLayer(input_size=key_hidden_size, output_size=self.dist_size)
         self.prob_encoder = True
         return self.prob_encoder
         

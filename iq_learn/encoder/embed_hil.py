@@ -92,6 +92,10 @@ def run_exp(config, expert_file, datafile):
         full_loader = utils.cheetah_full_loader(1, expert_file)
         hssm.post_obs_state._output_normal = True
         hssm._output_normal = True
+    elif config.get("env") == "hopper":
+        full_loader = utils.hopper_full_loader(1, expert_file)
+        hssm.post_obs_state._output_normal = True
+        hssm._output_normal = True
     elif config.get("env") == "cartpole":
         full_loader = utils.cartpole_full_loader(1, expert_file)
         hssm.post_obs_state._output_normal = True
@@ -102,8 +106,8 @@ def run_exp(config, expert_file, datafile):
         hssm._output_normal = True
     else:
         raise ValueError()
-    
-    device = torch.device("cuda", 0)
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    # device = torch.device("cuda", 0)
     hssm.to(device)
     seq_size = full_loader.dataset.seq_size
     init_size = 1
@@ -119,40 +123,41 @@ def run_exp(config, expert_file, datafile):
         action_list = action_list.to(device)
         results = hssm(obs_list, action_list, seq_size, init_size)
         # mean, std = hssm.get_dist_params()
-        # print("Dist params shape: ", mean.shape, std.shape)
-        # get the normal distribution from the mean and std
-        # mean is 1 64 and std is 1 64
-        # flatten them first
-        # mean = mean.view(-1).detach().cpu().numpy()
-        # std = std.view(-1).detach().cpu().numpy()
-        # dist = np.random.normal(loc=mean, scale=std, size=full_loader.dataset.seq_size)
-        # first_dimension = dist[:, 0]  # Extract the first dimension
+        # mean = mean.detach().cpu().numpy()
 
-        # # Plot a histogram
-        # plt.hist(first_dimension, bins=30, density=True, alpha=0.6, color='blue')
-        # plt.xlabel("First Dimension")
-        # plt.ylabel("Density")
-        # plt.title("Distribution of First Dimension")
-        # plt.show()
-        # # save the plot
-        # plt.savefig('first_dimension.png')
-
+        def reparameterize(mu, logvar):
+            """
+            Reparameterization trick to sample from N(mu, var) from
+            N(0,1).
+            :param mu: (Tensor) Mean of the latent Gaussian [B x D]
+            :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
+            :return: (Tensor) [B x D]
+            """
+            std = torch.exp(0.5 * logvar)
+            # std = std/100
+            eps = torch.randn_like(std)
+            return eps * std + mu
+        # emb = reparameterize(mean, std)
+        # emb = emb.detach().cpu().numpy()
+        
         ## --> Use dummy value to replace the embedding
-        if count<=9:
-            dummy_value = -1
-        else:
-            dummy_value = 1
-        count += 1
-        # create dummy which is the same shape as result[-3] and the values are dummy_value
-        dummy = [[dummy_value for i in range(len(j))] for j in results[-3]]
-        emb_list["emb"].extend(dummy)
+        # if count<=9:
+        #     dummy_value = -1
+        # else:
+        #     dummy_value = 1
+        # count += 1
+        # # create dummy which is the same shape as result[-3] and the values are dummy_value
+        # dummy = [[dummy_value for i in range(len(j))] for j in results[-3]]
+        # emb_list["emb"].extend(dummy)
 
         emb_list["num_m"].extend([len(i) for i in results[-4]])
-        # emb_list["emb"].extend(results[-3])
+        # emb_list["emb"].extend(mean) # use mean as the embedding
+        # emb_list["emb"].extend(emb) # probabilistic encoding
+        emb_list["emb"].extend(results[-3]) # deterministic encoding
         emb_list["level"].extend(level_list)
         emb_list["num_z"].extend([len(i) for i in results[-2]])
         emb_list["z"].extend(results[-1])
-
+        
         if b_idx >= 500:
             break
     ## --> Normalize the emb using z score normalization
@@ -401,9 +406,9 @@ def main():
     LOGGER.info(">>> Num of skills in one traj: {}~{}, Average {}".format(min(emb_list["num_z"]), 
                                                                       max(emb_list["num_z"]), 
                                                                       sum(emb_list["num_z"])/len(emb_list["num_z"])))
-    LOGGER.info(">>> Num of boundaries m=1 in one traj: {}~{}, Average {}".format(min(emb_list["num_m"]), 
-                                                                      max(emb_list["num_m"]), 
-                                                                      sum(emb_list["num_m"])/len(emb_list["num_m"])))
+    # LOGGER.info(">>> Num of boundaries m=1 in one traj: {}~{}, Average {}".format(min(emb_list["num_m"]), 
+    #                                                                   max(emb_list["num_m"]), 
+    #                                                                   sum(emb_list["num_m"])/len(emb_list["num_m"])))
     # collect traj embeddings
     # step 1: dict of {embedding, proficiency_level}
     clustering_report(emb_list, args.exp_name, logname, args.n_features)
@@ -419,6 +424,7 @@ def main():
     # render_skills(config, emb_list, args.exp_name)
 
     # step 5: prediction
+
 
 
 if __name__ == '__main__':

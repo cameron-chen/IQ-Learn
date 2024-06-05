@@ -23,17 +23,16 @@ def get_args(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     return cfg
 
-
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig):
     args = get_args(cfg)
 
     env = make_env(args)
-    if args.eval.use_baselines:
+    if args.eval.use_baselines: # use baselines to train the model
         # from baselines_zoo.baselines_expert import BaselinesExpert
         # agent = BaselinesExpert(args.env.name, folder='rl-trained-agents')
         # env = agent.env
-        if args.agent=="sac":
+        if args.agent.name=="sac":
             print("--> Using SAC to train the model")
             from stable_baselines3 import SAC
             agent = SAC("MlpPolicy", env=env,verbose=1)
@@ -41,17 +40,16 @@ def main(cfg: DictConfig):
             print("--> Using PPO to train the model")
             from stable_baselines3 import PPO
             agent = PPO("MlpPolicy", env=env,verbose=1)
-        TRAIN_TIMESTEPS = 50000
-        TOTAL_EPOCHS = 4
+        TRAIN_TIMESTEPS = 300000
+        TOTAL_EPOCHS = 2
         print(f"Env name : {args.env.name}")
         print("--> Training model, please expect a long training time")
         for i in range(TOTAL_EPOCHS):
-            agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS)
-            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/{args.env.name}_{(i+1)*TRAIN_TIMESTEPS}.zip'
+            agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS, log_interval=4)
+            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/{args.env.name}/{args.env.name}_{(i+1)*TRAIN_TIMESTEPS}.zip'
             agent.save(model_save_path)
-            print(f"Saved model at step {(i+1)*TRAIN_TIMESTEPS} at location {model_save_path}")
         # agent.load_state_dict(torch.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/policy.pth"))
-    else:
+    else: # load model directly
         if args.eval.policy:
             expert_file = f'{args.eval.policy}'
         print(f'Loading expert from: {expert_file}')
@@ -60,7 +58,7 @@ def main(cfg: DictConfig):
         if args.agent.name=="sac":
             print("--> Using SAC to load the model")
             from stable_baselines3 import SAC
-            agent = SAC("MlpPolicy", env=env,verbose=1)
+            # agent = SAC("MlpPolicy", env=env,verbose=1)
             agent = SAC.load(expert_file, env=env)
         else:
             print("--> Using PPO to load the model")
@@ -144,7 +142,7 @@ def main(cfg: DictConfig):
             states, next_states, actions, rewards, dones = zip(*traj)
             length = len(traj)
 
-            pad = False
+            pad = True # True for padding, False for no padding
             if pad == True:
                 # pad them
                 target_len = 1000

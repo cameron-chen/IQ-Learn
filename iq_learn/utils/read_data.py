@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import torch
+import argparse
 # with open('experts/HalfCheetah-v3_20_Gemini_2k+6k.pkl', 'rb') as f:
 #     data = pickle.load(f)
 # # with open('experts/HalfCheetah-v2_25.pkl', 'rb') as f:
@@ -38,8 +39,36 @@ def read_file(path: str, file_handle: IO[Any]) -> Dict[str, Any]:
         raise NotImplementedError
     return data
 
+def evolution():
+    # plot the first 2 dims of latent mean from step 2 to 10
+    prefix = 'cond/test_meanAsEmb_cond_dim10_kld_alpha1_step'
+    dim0_list = []
+    dim1_list = []
+    for i in range(2, 10, 2):
+        expert_loc = prefix + str(i) + '.pkl'
+        with open(expert_loc, 'rb') as f:
+            emb_list = read_file(expert_loc, f)
+        dim0_list.append(emb_list['emb'][0][0])
+        dim1_list.append(emb_list['emb'][0][1])
+    # plot dim0_list and dim1_list on the same plot
+    # x axis should be 2, 4, 6, 8, 10
+    # y axis should be the values of dim0 and dim1
+    x = [2, 4, 6, 8]
+    plt.plot(x, dim0_list, label='dim0')
+    plt.plot(x, dim1_list, label='dim1')
+    plt.legend()
+    plt.show()
+    savepic = "test.png"
+    plt.savefig(savepic)
+
+
 def main():
-    expert_location = 'experts/LunarLander-v2_100_230r.pkl'
+    # make expert_location an argument
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("file", type=str, help="name of the condition file")
+    args = arg_parser.parse_args()
+    expert_location = args.file
+    # expert_location = 'experts/LunarLander-v2_100_230r.pkl'
     with open(expert_location, 'rb') as f:
         trajs = read_file(expert_location, f)
 
@@ -47,12 +76,31 @@ def main():
 #     data = pickle.load(f)
 #%% --> Demos
     # check the lengths for official data
-    lengths = [len(i) for i in trajs["states"]]
-    print('len', lengths)
+    lengths = [len(i) for i in trajs["emb"]]
+    print('len', len(trajs["emb"]))
     
+    emb = trajs["emb"]
+    new_emb = []
+    for i in range(0, len(emb), 2):
+        new_emb.append(emb[i])
+    print('new len:', len(new_emb))
+    trajs["emb"] = new_emb
+    save_file = 'cond/test_hopperEmb_tripple_dim10_kld1.pkl'
+    with open(save_file, 'wb') as f:
+        pickle.dump(trajs, f)
+    # emb_sample = emb[0]
+    # print('emb sample',emb_sample)
+
+    # mean = [i[0] for i in trajs["dist_params"]]
+    # mean_sample = mean[0]
+    # print('mean sample',mean_sample)
+
+    # std = [i[1] for i in trajs["dist_params"]]
+    # std_sample = std[0]
+    # print('std sample',std_sample)
     # check the length for rollout
-    lengths = trajs['lengths']
-    print('lengths of trajs', lengths)
+    # lengths = trajs['lengths']
+    # print('lengths of trajs', lengths)
 
     # check returns
     # returns = [sum(i) for i in trajs["rewards"][:]]

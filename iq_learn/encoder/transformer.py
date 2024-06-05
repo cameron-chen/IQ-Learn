@@ -144,6 +144,55 @@ class ShallowTransformer(nn.Module):
         x = x.mean(dim=1)
         return x
 
+class DeepTransformer(nn.Module):
+    "Deep Attention Layer"
+
+    def __init__(
+        self,
+        emb_size: int = 128,
+        seq_length: int = 256,
+        dropout=0.1,
+        key_hidden_size=None,
+        value_hidden_size=None,
+        num_blocks=4,  # Number of attention blocks to repeat
+    ) -> None:
+        super().__init__()
+        key_hidden_size = key_hidden_size
+        value_hidden_size = value_hidden_size
+        if key_hidden_size is None:
+            key_hidden_size = emb_size
+        elif value_hidden_size is None:
+            value_hidden_size = emb_size
+
+        self.pos_embedding = PositionalEncoding(
+            emb_size, dropout=dropout, max_len=seq_length
+        )
+        
+        # Define attention blocks
+        self.attention_blocks = nn.ModuleList([
+            SimpleAttention(
+                emb_size=emb_size,
+                key_hidden_size=key_hidden_size,
+                value_hidden_size=value_hidden_size,
+            ) for _ in range(num_blocks)
+        ])
+
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        tokens = x
+        positions = self.pos_embedding(tokens.permute(1, 0, 2)).permute(1, 0, 2)
+        x = tokens + positions
+        x = self.dropout(x)
+
+        # Apply multiple attention blocks
+        for attention_block in self.attention_blocks:
+            x = attention_block(x, mask)
+            x = self.dropout(x)
+
+        x = x.mean(dim=1)
+        return x
+
 
 def d(tensor=None):
     """

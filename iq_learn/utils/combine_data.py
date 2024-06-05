@@ -19,7 +19,7 @@ def main():
     arg_parser.add_argument("data_list", type=list_of_strings, help="List of expert demos to combine")
     # arg_parser.add_argument('data1', type=str, default='experts/HalfCheetah-v3_8.pkl')
     # arg_parser.add_argument('data2', type=str, default='experts/HalfCheetah-v3_6_2327r.pkl')
-    arg_parser.add_argument('segment_len', type=int, default=5)
+    arg_parser.add_argument('segment_len', type=int, default=5) # segment legnth for each file
     arg_parser.add_argument('save_path', type=str, default='experts/HalfCheetah-v3_Gemini_2k+6k.pkl')
     args = arg_parser.parse_args()
 

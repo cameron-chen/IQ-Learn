@@ -122,8 +122,8 @@ class ExpertDataset(Dataset):
             next_states = np.array(next_states) / 255.0
 
         # cond = [-1]*self.cond_dim
-        if len(cond)<self.cond_dim:
-            raise ValueError(f"cond_dim {self.cond_dim}out of range, maximum cond length is {len(cond)}")
+        # if len(cond)<self.cond_dim:
+        #     raise ValueError(f"cond_dim {self.cond_dim}out of range, maximum cond length is {len(cond)}")
         if self.cond_dim > 0 and (self.cond_type=="random" or self.cond_type=="debug"):
             cond = cond[:self.cond_dim]
         elif self.cond_type=="none" or self.cond_type=="dummy":
