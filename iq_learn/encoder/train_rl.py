@@ -89,6 +89,7 @@ def parse_args():
 
     # baselines
     parser.add_argument("--ddo", action="store_true")
+    parser.add_argument("--expert_file", type=str, default="")
     return parser.parse_args()
 
 
@@ -220,7 +221,7 @@ def main():
         output_normal = True
         os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
     elif "hopper" in args.dataset_path:
-        train_loader, test_loader = utils.hopper_loader(args.batch_size, args.hil_seq_size)
+        train_loader, test_loader = utils.hopper_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
         action_encoder = LinearLayer(
             input_size=train_loader.dataset.action_size,
             output_size=args.belief_size)
@@ -613,10 +614,17 @@ def main():
                     LOGGER.info(log_str, *log_data)
                     # LOGGER.info("ep: {:08}, training loss: {}".format(b_idx,train_total_loss.detach().cpu()))
                     wandb.log(train_stats, step=b_idx)
+                    avg_num_skills = sum(num_skills)/len(num_skills)
+                    if avg_num_skills<200:
+                        exp_dir = os.path.join("experiments", args.name)
+                        torch.save(
+                            model.module.state_model, os.path.join(exp_dir, f"model-{b_idx}.ckpt")
+                        )
+                        exit("num_skills < 200. Training has converged")
                 np.set_printoptions(threshold=100000)
                 torch.set_printoptions(threshold=100000)
                     
-                if b_idx % args.save_interval == 0:
+                if b_idx % args.save_interval == 0 or b_idx==10 or b_idx==30:
                     exp_dir = os.path.join("experiments", args.name)
                     torch.save(
                         model.module.state_model, os.path.join(exp_dir, f"model-{b_idx}.ckpt")

@@ -40,15 +40,17 @@ def main(cfg: DictConfig):
             print("--> Using PPO to train the model")
             from stable_baselines3 import PPO
             agent = PPO("MlpPolicy", env=env,verbose=1)
-        TRAIN_TIMESTEPS = 300000
-        TOTAL_EPOCHS = 2
+        TRAIN_TIMESTEPS = args.expert_gen_steps
+        TOTAL_EPOCHS = 3
+        print(f"Env short name : {args.env.short_name}")
         print(f"Env name : {args.env.name}")
         print("--> Training model, please expect a long training time")
         for i in range(TOTAL_EPOCHS):
             agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS, log_interval=4)
-            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/{args.env.name}/{args.env.name}_{(i+1)*TRAIN_TIMESTEPS}.zip'
+            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/{args.env.short_name}/{(i+1)*TRAIN_TIMESTEPS}.zip'
             agent.save(model_save_path)
         # agent.load_state_dict(torch.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/policy.pth"))
+        exit("Training done, please rerun the script with use_baselines=False to generate expert trajectories")
     else: # load model directly
         if args.eval.policy:
             expert_file = f'{args.eval.policy}'
@@ -115,7 +117,7 @@ def main(cfg: DictConfig):
             episode_reward += reward
             if memory_replay.size() == REPLAY_MEMORY:
                 print('expert replay saved...')
-                memory_replay.save(f'experts/{args.env.name}_{args.expert.demos}_{int(episode_reward)}')
+                memory_replay.save(f'experts/{args.env.short_name}_{args.expert.demos}_{int(episode_reward)}')
                 exit()
 
             state = next_state
@@ -168,21 +170,18 @@ def main(cfg: DictConfig):
 
     # for k, v in expert_trajs.items():
     #     expert_trajs[k] = np.array(v)
-
-    get_data_stats(expert_trajs, np.array(expert_rewards), np.array(expert_lengths))
-
-    print('Final size of Replay Buffer: {}'.format(sum(expert_trajs["lengths"])))
-    mean_reward = int(np.mean(expert_rewards))
-    save_path = f'experts/{args.env.name.replace("/","")}_{args.expert.demos}_{mean_reward}r.pkl'
-    with open(hydra.utils.to_absolute_path(save_path), 'wb') as f:
-        pickle.dump(expert_trajs, f)
-    print(f'Expert traj saved in {save_path}')
+    if len(expert_trajs["lengths"]) > 0:
+        get_data_stats(expert_trajs, np.array(expert_rewards), np.array(expert_lengths))
+        print('Final size of Replay Buffer: {}'.format(sum(expert_trajs["lengths"])))
+        mean_reward = int(np.mean(expert_rewards))
+        save_path = f'experts/{args.env.short_name}/{args.env.name.replace("/","")}_{args.expert.demos}_{mean_reward}r.pkl'
+        with open(hydra.utils.to_absolute_path(save_path), 'wb') as f:
+            pickle.dump(expert_trajs, f)
+        print(f'Expert traj saved in {save_path}')
     exit()
 
 
 def get_data_stats(d, rewards, lengths):
-    # lengths = d["lengths"]
-
     print("rewards: {:.2f} +/- {:.2f}".format(rewards.mean(), rewards.std()))
     print("len: {:.2f} +/- {:.2f}".format(lengths.mean(), lengths.std()))
 

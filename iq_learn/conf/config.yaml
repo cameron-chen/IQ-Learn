@@ -68,3 +68,4 @@ defaults:
 bc_steps: 1000
 exp_dir: ''
 encoder: ''
+expert_gen_steps: 1000

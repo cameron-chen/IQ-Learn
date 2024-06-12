@@ -1042,7 +1042,7 @@ def lunar_full_loader(batch_size, expert_file):
 
 class HopperDataset(Dataset):
     def __init__(self, partition, seq_size=1000,
-                 expert_file="/home/zichang/proj/IQ-Learn/iq_learn/encoder/expert/hopper/Hopper-v2_100_299r.pkl,/home/zichang/proj/IQ-Learn/iq_learn/encoder/expert/hopper/Hopper-v2_100_803r.pkl,/home/zichang/proj/IQ-Learn/iq_learn/encoder/expert/hopper/Hopper-v2_100_1404r.pkl"):
+                 expert_file=""):
         mycwd = os.getcwd()
         os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder/")
         dataset_paths = expert_file.split(",")
@@ -1104,9 +1104,10 @@ class HopperDataset(Dataset):
         action = [np.array(x, dtype=type) for x in trajectories['actions']]
         return state, action
     
-def hopper_loader(batch_size, seq_size):
-    train_dataset = HopperDataset(partition="train", seq_size=seq_size)
-    test_dataset = HopperDataset(partition="test", seq_size=seq_size)
+def hopper_loader(batch_size, seq_size, 
+                  expert_file="/home/zichang/proj/IQ-Learn/iq_learn/encoder/expert/hopper/Hopper-v2_100_299r.pkl,/home/zichang/proj/IQ-Learn/iq_learn/encoder/expert/hopper/Hopper-v2_100_803r.pkl,/home/zichang/proj/IQ-Learn/iq_learn/encoder/expert/hopper/Hopper-v2_100_1404r.pkl"):
+    train_dataset = HopperDataset(partition="train", seq_size=seq_size, expert_file=expert_file)
+    test_dataset = HopperDataset(partition="test", seq_size=seq_size, expert_file=expert_file)
     train_loader = DataLoader(
         dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=False
     )

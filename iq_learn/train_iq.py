@@ -65,7 +65,7 @@ def main(cfg: DictConfig):
             sync_tensorboard=True, 
             reinit=True, 
             config=args, 
-            name=f"{args.env.name} cond_dim={args.cond_dim} method.kld_alpha={args.method.kld_alpha}"
+            name=f"{args.env.name} bc_init{args.method.bc_init} cond_dim={args.cond_dim} method.kld_alpha={args.method.kld_alpha}"
         )
 
     # set seeds
@@ -174,7 +174,7 @@ def main(cfg: DictConfig):
     agent.bc_alpha = args.method.bc_alpha
     # encoder is model.ckpt, remove ".ckpt"
     encoder_name = args.encoder.split(".")[0]
-    unique_temp_cond_file = f"cond/temp_{args.env.name}_{encoder_name}.pkl"
+    unique_temp_cond_file = f"cond/{args.env.short_name}/temp_{args.env.name}_{encoder_name}.pkl"
     # unique_temp_cond_file= "cond/temp_cond.pkl"
     print(f"-> Unique temp cond file: {unique_temp_cond_file}")
     
@@ -189,6 +189,7 @@ def main(cfg: DictConfig):
         logit_m = emb_list["logit_m"]
         logit_array_0, m_array_0 = logit_m[0]
         first_mu_0 = get_mu_logvar(logit_array_0, m_array_0, encoder, device)[1].detach().cpu().numpy()
+        last_l2_norm = []
         for learn_steps_bc in count():
             # print(f"BC step: {learn_steps_bc}")
             expert_batch = expert_memory_replay.get_samples(
@@ -232,17 +233,24 @@ def main(cfg: DictConfig):
             # log losses
             
             if learn_steps_bc % 10 == 0:  # args.log_interval == 0:
-                # test: log the l2 norm between the latest latent mean and the first latent mean every 10 steps
+                # test: log the l2 norm between the latest latent mean (traj_id=0) and the first latent mean every 10 steps
                 _, mu_0, __ = get_mu_logvar(logit_array_0, m_array_0, encoder, device)
                 mu_0 = mu_0.detach().cpu().numpy()
                 l2_norm = np.linalg.norm(mu_0 - first_mu_0)
-
+                
                 # print(f"Step: {learn_steps_bc}, L2 Norm: {l2_norm.item()}")
                 losses["mean_l2_norm"] = l2_norm.item()
                 for key, loss in losses.items():
                     writer.add_scalar(key, loss, global_step=learn_steps_bc)
                 
                 logger.dump(learn_steps_bc)
+                if len(last_l2_norm)>3:
+                    if abs(last_l2_norm[0]-l2_norm) < 1e-2:
+                        print("Converged!")
+                        break
+                    else:
+                        last_l2_norm.pop(0)
+                        last_l2_norm.append(l2_norm)
 
             # eval every n steps
             if learn_steps_bc % 100 == 0:  # args.env.eval_interval == 0:
@@ -277,7 +285,7 @@ def main(cfg: DictConfig):
                 print(f'--> New expert memory size: {expert_memory_replay.size()}')
             # save the encoder every 500 steps
             if learn_steps_bc % 10 == 0 and learn_steps_bc > 0:
-                unique_encoder_file = f"cond_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_betaB_step{learn_steps_bc}.ckpt"
+                unique_encoder_file = f"prob-encoder_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_betaB_step_{learn_steps_bc}.ckpt"
                 save_dir = os.path.join(exp_dir, unique_encoder_file)
                 torch.save(encoder, save_dir)
                 print(f"Encoder saved at {save_dir}")

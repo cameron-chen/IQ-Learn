@@ -545,9 +545,9 @@ class HierarchicalStateSpaceModel(nn.Module):
         # self.transformer = nn.Transformer(d_model=256, nhead=8, num_encoder_layers=6, num_decoder_layers=6, dim_feedforward=2048, dropout=0.1)
         # self.compact_last = LinearLayer(input_size=self.dist_size*2, output_size=self.dist_size)
         
+        self.logit_tensors = logit_tensors
+        self.m_tensors = m_tensors
         if self.prob_encoder:
-            self.logit_tensors = logit_tensors
-            self.m_tensors = m_tensors
             z_logit_feat = self.z_logit_feat(logit_tensors)
             m_feat = self.m_feat(m_tensors)
             

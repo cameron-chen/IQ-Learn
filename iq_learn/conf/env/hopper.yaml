@@ -1,6 +1,7 @@
 # @package _global_
 
 env:
+  short_name: hopper
   name: Hopper-v2
   demo: Hopper-v2_25.pkl
   cond: cheetah_10_2k+6k.pkl
