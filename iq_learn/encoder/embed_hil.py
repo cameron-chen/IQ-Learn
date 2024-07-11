@@ -44,6 +44,18 @@ def run_exp(config, expert_file, datafile, embed_mode):
         full_loader = utils.hopper_full_loader(1, expert_file)
         hssm.post_obs_state._output_normal = True
         hssm._output_normal = True
+    elif config.get("env") == "walker":
+        full_loader = utils.walker_full_loader(1, expert_file)
+        hssm.post_obs_state._output_normal = True
+        hssm._output_normal = True
+    elif config.get("env") == "ant":
+        full_loader = utils.ant_full_loader(1, expert_file)
+        hssm.post_obs_state._output_normal = True
+        hssm._output_normal = True
+    elif config.get("env") == "humanoid":
+        full_loader = utils.humanoid_full_loader(1, expert_file)
+        hssm.post_obs_state._output_normal = True
+        hssm._output_normal = True
     elif config.get("env") == "cartpole":
         full_loader = utils.cartpole_full_loader(1, expert_file)
         hssm.post_obs_state._output_normal = True
@@ -114,7 +126,8 @@ def run_exp(config, expert_file, datafile, embed_mode):
         if b_idx >= 500:
             break
     ## --> Normalize the emb using z score normalization
-    # emb_list["emb"] = zscore(emb_list["emb"])
+    emb_list["emb"] = zscore(emb_list["emb"])
+    os.makedirs(os.path.dirname(datafile), exist_ok=True)
     with open(datafile, 'wb') as f:
         pickle.dump(emb_list, f)
         
@@ -136,6 +149,9 @@ def clustering_report(emb_list, exp_name, logname, n_features, env_name):
     model = KMeans(n_clusters=n_features, n_init=10)
     # fit the model
     emb_list["emb"] = [np.squeeze(i) for i in emb_list["emb"]]
+    # check if the emb is 1D
+    if np.array(emb_list["emb"]).ndim == 1:
+        emb_list["emb"] = np.array(emb_list["emb"]).reshape(-1,1)
     model.fit(emb_list["emb"])
     # assign a cluster to each example
     yhat = model.predict(emb_list["emb"])
@@ -149,7 +165,7 @@ def clustering_report(emb_list, exp_name, logname, n_features, env_name):
         pyplot.scatter(X[row_ix, 0], X[row_ix, 1])
     # show the plot
     pyplot.show()
-    pyplot.savefig(f'plot/{exp_name}_kmeans.png')
+    # pyplot.savefig(f'plot/{exp_name}_kmeans.png')
     # calculate the ratio
     ratio = [[0 for i in range(n_features)] for i in range(n_features)]
     for index, cluster in enumerate(yhat):
@@ -169,7 +185,7 @@ def clustering_report(emb_list, exp_name, logname, n_features, env_name):
     LOGGER.info("#" * 80)
     print("Log saved at {}".format(logname))
 
-def pca(emb_list, exp_name, n_features, env_name):
+def pca(emb_list, exp_name, n_features, env_name, exp_id):
     from sklearn.decomposition import PCA
     import pandas as pd
     import matplotlib.pyplot as plt
@@ -205,14 +221,14 @@ def pca(emb_list, exp_name, n_features, env_name):
 
     plt.legend(targets,prop={'size': 15})
     plt.show()
-    datadir = f"plot/{env_name}"
+    datadir = f"plot/{env_name}/{exp_id}"
     if not os.path.exists(datadir):
         os.makedirs(datadir)
     savepic = os.path.join(datadir, exp_name + "_PCA.png")
     plt.savefig(savepic)
     print("Plot saved at {}".format(savepic))
 
-def tSNE(emb_list, exp_name, n_features, env_name):
+def tSNE(emb_list, exp_name, n_features, env_name, exp_id):
     import numpy as np
     from sklearn.manifold import TSNE
     import matplotlib.pyplot as plt
@@ -240,7 +256,7 @@ def tSNE(emb_list, exp_name, n_features, env_name):
 
     plt.legend(targets,prop={'size': 15})
     plt.show()
-    datadir = f"plot/{env_name}"
+    datadir = f"plot/{env_name}/{exp_id}"
     if not os.path.exists(datadir):
         os.makedirs(datadir)
     savepic = os.path.join(datadir, exp_name + "_tSNE.png")
@@ -386,13 +402,14 @@ def main():
     arg_parser.add_argument("--batchsize", type=int, default=8)
     arg_parser.add_argument("--n_features", type=int, default=3)
     arg_parser.add_argument("--embed_mode", type=str, default="det", help="det, mean or prob", choices=["det", "mean", "prob"])
+    arg_parser.add_argument("--exp_id", type=str, default="no_id", help="experiment id for saving")
     args = arg_parser.parse_args()
     config = cfg.Config.from_files_and_bindings(
             args.configs, args.config_bindings)
     env_name = config.get("env")
-    if not os.path.exists(f"result_clustering/{env_name}"):
-        os.makedirs(f"result_clustering/{env_name}")    
-    logname = os.path.join(f"result_clustering/{env_name}", args.exp_name + ".log")
+    if not os.path.exists(f"result_clustering/{env_name}/{args.exp_id}"):
+        os.makedirs(f"result_clustering/{env_name}/{args.exp_id}")    
+    logname = os.path.join(f"result_clustering/{env_name}/{args.exp_id}", args.exp_name + ".log")
     logging.basicConfig(filename=logname,
                         filemode='w',
                         # format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
@@ -405,7 +422,7 @@ def main():
     torch.manual_seed(args.seed)
 
     print(f"Fetching data...")
-    datadir = f"../cond/{env_name}"
+    datadir = f"../cond/{env_name}/{args.exp_id}"
     datafile = os.path.join(datadir,args.exp_name + ".pkl")
     if os.path.isfile(datafile):
         with open(datafile, 'rb') as f:
@@ -427,10 +444,10 @@ def main():
 
     # step 2: PCA principle component analysis
     # draw a figure, different colors for different proficiency levels   
-    pca(emb_list, args.exp_name, args.n_features, env_name) 
+    pca(emb_list, args.exp_name, args.n_features, env_name, args.exp_id) 
 
     # step 3: tSNE
-    tSNE(emb_list, args.exp_name, args.n_features, env_name)
+    tSNE(emb_list, args.exp_name, args.n_features, env_name, args.exp_id)
 
     # step 4: render one trajectory
     # render_skills(config, emb_list, args.exp_name)

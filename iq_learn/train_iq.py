@@ -33,6 +33,7 @@ from make_envs import make_env
 from utils.logger import Logger
 from utils.utils import (average_dicts, eval_mode, evaluate,
                          get_concat_samples, hard_update, soft_update)
+from utils.utils import EarlyStopper
 from wrappers.atari_wrapper import LazyFrames
 from typing import IO, Any, Dict
 import pickle
@@ -58,15 +59,22 @@ def main(cfg: DictConfig):
     if args.wandb:
         if args.cond_type!="none":
             exp_name = args.env.cond
+            wandb.init(
+                project="hil_iq", 
+                sync_tensorboard=True, 
+                reinit=True, 
+                config=args, 
+                name=f"{args.env.name} bc_init{args.method.bc_init} cond_dim={args.cond_dim} method.kld_alpha={args.method.kld_alpha}"
+            )
         else: 
             exp_name = args.env.demo
-        wandb.init(
-            project="hil_iq", 
-            sync_tensorboard=True, 
-            reinit=True, 
-            config=args, 
-            name=f"{args.env.name} bc_init{args.method.bc_init} cond_dim={args.cond_dim} method.kld_alpha={args.method.kld_alpha}"
-        )
+            wandb.init(
+                project="hil_iq", 
+                sync_tensorboard=True, 
+                reinit=True, 
+                config=args, 
+                name=f"{args.env.name} iq-learn only"
+            )
 
     # set seeds
     random.seed(args.seed)
@@ -141,43 +149,74 @@ def main(cfg: DictConfig):
     # print work dir
     # change work dir to encoder dir
     # os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
-    
-    sys.path.append('/home/zichang/proj/IQ-Learn/iq_learn/encoder')
-    print("Current working directory: ", os.getcwd())
-    exp_dir = args.exp_dir
-    checkpoint = exp_dir + args.encoder
-    encoder = torch.load(checkpoint)
-    encoder.train()
-    encoder.to(device)
-    encoder.instantiate_prob_encoder(dist_size=args.cond_dim)
+    if args.method.bc_init:
+        sys.path.append('/home/zichang/proj/IQ-Learn/iq_learn/encoder')
+        print("Current working directory: ", os.getcwd())
+        exp_dir = args.exp_dir
+        checkpoint = exp_dir + args.encoder
+        encoder = torch.load(checkpoint)
+        encoder.train()
+        encoder.to(device)
+        encoder.instantiate_prob_encoder(dist_size=args.cond_dim)
 
-    last_layers_to_unfreeze = ['z_logit_feat', 'm_feat', 'transformer', 'compact_last', 'mu_layer','logvar_layer']
+        # Define forward hook
+        # def forward_hook(module, input, output):
+        #     # print(f"Forward pass through {module}:")
+        #     if isinstance(output, tuple):
+        #         for i, out in enumerate(output):
+        #             if isinstance(out, torch.Tensor):
+        #                 # print(f"Output[{i}]: {out}")
+        #                 if torch.isnan(out).any():
+        #                     print(f"NaN detected in output[{i}] of {module}")
+        #             else:
+        #                 # print(f"Output[{i}]: {out} (not a tensor)")
+        #                 pass
+        #     elif isinstance(output, torch.Tensor):
+        #         # print(f"Output: {output}")
+        #         if torch.isnan(output).any():
+        #             print(f"Output: {output}")
+        #             print(f"NaN detected in output of {module}")
+        #     else:
+        #         # print(f"Output: {output} (not a tensor)")
+        #         pass
 
-    # Freeze all parameters first
-    for param in encoder.parameters():
-        param.requires_grad = False
+        # # Register forward hooks
+        # for name, layer in encoder.named_modules():
+        #     layer.register_forward_hook(forward_hook)
+        
+        last_layers_to_unfreeze = ['z_logit_feat', 'm_feat', 'transformer', 'compact_last', 'mu_layer','logvar_layer']
 
-    # Unfreeze specific last layers by their names
-    for name, param in encoder.named_parameters():
-        if any(last_layer_name in name for last_layer_name in last_layers_to_unfreeze):
-            param.requires_grad = True
+        # Freeze all parameters first
+        for param in encoder.parameters():
+            param.requires_grad = False
+        
+        # Unfreeze specific last layers by their names
+        for name, param in encoder.named_parameters():
+            if any(last_layer_name in name for last_layer_name in last_layers_to_unfreeze):
+                param.requires_grad = True
 
-    encoder_optimizer = Adam(params=encoder.parameters(), lr=3e-05, amsgrad=True)
-    print(f"Encoder Loaded: {checkpoint}, optimizer ready")
-    # bc loss function
-    # if args.method.enable_bc_actor_update:
-    agent.loss_calculator = BehaviorCloningLossCalculator(
-        ent_weight=1e-3,  # args.method.bc_ent_weight,
-        l2_weight=0.0,  # args.method.bc_l2_weight,
-        kld_weight=args.method.kld_alpha,  # args.method.bc_kld_weight,
-    )
-    agent.bc_alpha = args.method.bc_alpha
-    # encoder is model.ckpt, remove ".ckpt"
-    encoder_name = args.encoder.split(".")[0]
-    unique_temp_cond_file = f"cond/{args.env.short_name}/temp_{args.env.name}_{encoder_name}.pkl"
-    # unique_temp_cond_file= "cond/temp_cond.pkl"
-    print(f"-> Unique temp cond file: {unique_temp_cond_file}")
-    
+        # Print all layers and sub-layers
+        print("\nModel layers using model.modules():")
+        for layer in encoder.modules():
+            print(layer)
+
+
+        encoder_optimizer = Adam(params=encoder.parameters(), lr=3e-05, amsgrad=True)
+        print(f"Encoder Loaded: {checkpoint}, optimizer ready")
+        # bc loss function
+        # if args.method.enable_bc_actor_update:
+        agent.loss_calculator = BehaviorCloningLossCalculator(
+            ent_weight=1e-3,  # args.method.bc_ent_weight,
+            l2_weight=0.0,  # args.method.bc_l2_weight,
+            kld_weight=args.method.kld_alpha,  # args.method.bc_kld_weight,
+        )
+        agent.bc_alpha = args.method.bc_alpha
+        # encoder is model.ckpt, remove ".ckpt"
+        encoder_name = args.encoder.split(".")[0]
+        unique_temp_cond_file = f"cond/{args.env.short_name}/temp_{args.env.name}_{encoder_name}.pkl"
+        # unique_temp_cond_file= "cond/temp_cond.pkl"
+        print(f"-> Unique temp cond file: {unique_temp_cond_file}")
+        
     # BC initialization
     if args.method.bc_init:
         agent.bc_update = types.MethodType(bc_update, agent)
@@ -189,7 +228,7 @@ def main(cfg: DictConfig):
         logit_m = emb_list["logit_m"]
         logit_array_0, m_array_0 = logit_m[0]
         first_mu_0 = get_mu_logvar(logit_array_0, m_array_0, encoder, device)[1].detach().cpu().numpy()
-        last_l2_norm = []
+        early_stopper = EarlyStopper(patience=3, min_delta=-0.2)
         for learn_steps_bc in count():
             # print(f"BC step: {learn_steps_bc}")
             expert_batch = expert_memory_replay.get_samples(
@@ -244,13 +283,14 @@ def main(cfg: DictConfig):
                     writer.add_scalar(key, loss, global_step=learn_steps_bc)
                 
                 logger.dump(learn_steps_bc)
-                if len(last_l2_norm)>3:
-                    if abs(last_l2_norm[0]-l2_norm) < 1e-2:
-                        print("Converged!")
-                        break
-                    else:
-                        last_l2_norm.pop(0)
-                        last_l2_norm.append(l2_norm)
+                print (f"Step: {learn_steps_bc}, L2 Norm: {l2_norm.item()}")
+                if early_stopper.early_stop(-l2_norm.item()):  
+                    unique_encoder_file = f"prob-encoder_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_betaB_step_{learn_steps_bc}.ckpt"
+                    save_dir = os.path.join(exp_dir, unique_encoder_file)
+                    torch.save(encoder, save_dir)
+                    print(f"Encoder saved at {save_dir}") 
+                    print("Early stopping at step: ", learn_steps_bc)          
+                    break
 
             # eval every n steps
             if learn_steps_bc % 100 == 0:  # args.env.eval_interval == 0:
@@ -284,7 +324,7 @@ def main(cfg: DictConfig):
                               cond_location=hydra.utils.to_absolute_path(unique_temp_cond_file))
                 print(f'--> New expert memory size: {expert_memory_replay.size()}')
             # save the encoder every 500 steps
-            if learn_steps_bc % 10 == 0 and learn_steps_bc > 0:
+            if (learn_steps_bc % args.bc_save_interval == 0 or learn_steps_bc==10) and learn_steps_bc > 0:
                 unique_encoder_file = f"prob-encoder_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_betaB_step_{learn_steps_bc}.ckpt"
                 save_dir = os.path.join(exp_dir, unique_encoder_file)
                 torch.save(encoder, save_dir)
@@ -685,6 +725,7 @@ def bc_update(self, observation, action, condition, logger, step, cond_type, mu,
             training_metrics = self.loss_calculator(self, (observation, condition), action, mu, log_var)
 
         loss = training_metrics["loss/bc_actor"]
+        # print(training_metrics)
 
         # optimize actor
         self.actor_optimizer.zero_grad()

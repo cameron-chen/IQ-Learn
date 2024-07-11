@@ -79,10 +79,11 @@ class ExpertDataset(Dataset):
             i += 1
         print(f"--> Reading cond from {cond_location}")
         if os.path.isfile(cond_location):
-            # Load data from single file.
+            # Load data from single file. if conds does not exist, return error
             with open(cond_location, 'rb') as f:
                 conds = read_file(cond_location, f)
-        
+        else:
+            raise ValueError(f"{cond_location} is not a valid path")
         # print("conds length: ", len(self.conds))
         # print("trajectories length: ", len(self.trajectories["states"]))
         # apply permutation to cond
@@ -96,6 +97,7 @@ class ExpertDataset(Dataset):
             self.true_traj_idx_list = perm[:num_trajectories]
         else:
             self.conds = conds["emb"][:num_trajectories]
+            self.true_traj_idx_list = perm[:num_trajectories]
         # print("permuted condss:",self.conds)
         assert len(self.conds)==len(self.trajectories["states"])
 

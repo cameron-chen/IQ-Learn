@@ -4,7 +4,7 @@ env:
   short_name: hopper
   name: Hopper-v2
   demo: Hopper-v2_25.pkl
-  cond: cheetah_10_2k+6k.pkl
+  cond: hopper/Hopper-v2_20_876r+3213r.pkl
   # learn_steps: 1e5
   # eval_interval: 1e3
 
@@ -23,6 +23,7 @@ expert:
 eval:
   policy: 
   threshold: 3500
+  upper: 1e6
 
 
 agent:

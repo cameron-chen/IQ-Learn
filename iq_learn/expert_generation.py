@@ -46,7 +46,7 @@ def main(cfg: DictConfig):
         print(f"Env name : {args.env.name}")
         print("--> Training model, please expect a long training time")
         for i in range(TOTAL_EPOCHS):
-            agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS, log_interval=4)
+            agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS, log_interval=100)
             model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/{args.env.short_name}/{(i+1)*TRAIN_TIMESTEPS}.zip'
             agent.save(model_save_path)
         # agent.load_state_dict(torch.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/policy.pth"))
@@ -82,6 +82,10 @@ def main(cfg: DictConfig):
 
     REPLAY_MEMORY = None
     REWARD_THRESHOLD = args.eval.threshold
+    if args.eval.upper:
+        REWARD_UPPER = args.eval.upper
+    else:
+        REWARD_UPPER = None
     MAX_EPS = args.expert.demos
     EPS_STEPS = int(args.env.eps_steps)
 
@@ -94,6 +98,9 @@ def main(cfg: DictConfig):
 
     for epoch in count():
         if saved_eps >= MAX_EPS:
+            break
+        if epoch > 100*MAX_EPS:
+            print('Max episodes reached')
             break
         vec_env = agent.get_env()
         state = env.reset()
@@ -139,7 +146,7 @@ def main(cfg: DictConfig):
         # if (not REWARD_THRESHOLD or episode_reward >= REWARD_THRESHOLD) and (not use_success or score >= 1.):
         if args.agent=="sac" and episode_reward.ndim == 1:
             episode_reward = episode_reward[0]
-        if (not REWARD_THRESHOLD or episode_reward >= REWARD_THRESHOLD):
+        if (not REWARD_THRESHOLD or episode_reward >= REWARD_THRESHOLD) and (not REWARD_UPPER or episode_reward <= REWARD_UPPER):
             saved_eps += 1
             states, next_states, actions, rewards, dones = zip(*traj)
             length = len(traj)

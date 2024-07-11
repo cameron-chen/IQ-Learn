@@ -32,10 +32,164 @@ from modules import (
 )
 from datetime import datetime
 import wandb
+from scipy.stats import zscore
+from tqdm import tqdm
+from scipy.optimize import linear_sum_assignment
+class EarlyStopper:
+    def __init__(self, patience=1, min_delta=0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.min_validation_loss = float('inf')
 
+    def early_stop(self, validation_loss):
+        if validation_loss < self.min_validation_loss:
+            self.min_validation_loss = validation_loss
+            self.counter = 0
+        elif validation_loss > (self.min_validation_loss + self.min_delta):
+            self.counter += 1
+            if self.counter >= self.patience:
+                return True
+        return False
 
 LOGGER = logging.getLogger(__name__)
 
+def run_exp(model, full_loader, embed_mode, device):
+    hssm = model.cpu()
+    hssm._use_min_length_boundary_mask = True
+    hssm.eval()
+    hssm.post_obs_state._output_normal = True
+    hssm._output_normal = True
+    print("Model Loaded")
+    hssm.to(device)
+    seq_size = full_loader.dataset.seq_size
+    init_size = 1
+    b_idx = 0
+    emb_list = {"num_m":[],"emb": [], "level":[], "num_z":[], "z":[], "logit_m":[]}
+    count = 0
+    for obs_list, action_list, level_list in tqdm(full_loader):
+        # obs_list 100 1000 17
+        # action_list 100 1000 6
+        # trai_level_list 100
+        b_idx += 1
+        obs_list = obs_list.to(device)
+        action_list = action_list.to(device)
+        results = hssm(obs_list, action_list, seq_size, init_size)
+        if embed_mode == "det": # deterministic encoding
+            emb_list["emb"].extend(results[-3]) 
+        else:
+            mean, std = hssm.get_dist_params()
+            if embed_mode == "mean": # mean as embedding 
+                mean = mean.detach().cpu().numpy()
+                emb_list["emb"].extend(mean)
+            elif embed_mode == "prob": # probabilistic encoding
+                def reparameterize(mu, logvar):
+                    """
+                    Reparameterization trick to sample from N(mu, var) from
+                    N(0,1).
+                    :param mu: (Tensor) Mean of the latent Gaussian [B x D]
+                    :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
+                    :return: (Tensor) [B x D]
+                    """
+                    std = torch.exp(0.5 * logvar)
+                    # std = std/100
+                    eps = torch.randn_like(std)
+                    return eps * std + mu
+                emb = reparameterize(mean, std)
+                emb = emb.detach().cpu().numpy()
+                emb_list["emb"].extend(emb)
+            else:
+                raise ValueError("Invalid embedding mode")
+        ## --> Use dummy value to replace the embedding
+        # if count<=9:
+        #     dummy_value = -1
+        # else:
+        #     dummy_value = 1
+        # count += 1
+        # # create dummy which is the same shape as result[-3] and the values are dummy_value
+        # dummy = [[dummy_value for i in range(len(j))] for j in results[-3]]
+        # emb_list["emb"].extend(dummy)
+
+        emb_list["num_m"].extend([len(i) for i in results[-4]])
+        emb_list["level"].extend(level_list)
+        emb_list["num_z"].extend([len(i) for i in results[-2]])
+        emb_list["z"].extend(results[-1])
+        logit_arrays, m_arrays = hssm.get_logit_m()
+        emb_list["logit_m"].append((logit_arrays, m_arrays))
+        if b_idx >= 500:
+            break
+    ## --> Normalize the emb using z score normalization
+
+    emb_list["emb"] = zscore(emb_list["emb"])
+    # with open(datafile, 'wb') as f:
+    #     pickle.dump(emb_list, f)
+        
+    return emb_list
+
+def clustering_report(emb_list, logname, n_features):
+    # compare traj embeddings
+    # option 1. k_means num_clusters = n_proficiency_levels
+    # expected the same level in the same cluster
+    from numpy import unique
+    from numpy import where
+    from sklearn.datasets import make_classification
+    from sklearn.cluster import KMeans
+    from matplotlib import pyplot
+    
+    # define dataset
+    X, _ = make_classification(n_samples=1000, n_features=n_features, n_informative=2, n_redundant=0, n_clusters_per_class=1, random_state=4)
+    # define the model
+    model = KMeans(n_clusters=n_features, n_init=10)
+    # fit the model
+    emb_list["emb"] = [np.squeeze(i) for i in emb_list["emb"]]
+    # check if the emb is 1D
+    if np.array(emb_list["emb"]).ndim == 1:
+        emb_list["emb"] = np.array(emb_list["emb"]).reshape(-1,1)
+    model.fit(emb_list["emb"])
+    # assign a cluster to each example
+    yhat = model.predict(emb_list["emb"])
+    # retrieve unique clusters
+    clusters = unique(yhat)
+    # create scatter plot for samples from each cluster
+    for cluster in clusters:
+        # get row indexes for samples with this cluster
+        row_ix = where(yhat == cluster)
+        # create scatter of these samples
+        pyplot.scatter(X[row_ix, 0], X[row_ix, 1])
+    # show the plot
+    # pyplot.show()
+    # pyplot.savefig(f'plot/{exp_name}_kmeans.png')
+    # calculate the ratio
+    pred_acc = [[0 for i in range(n_features)] for i in range(n_features)]
+    for index, cluster in enumerate(yhat):
+        proficiency_level = emb_list["level"][index]
+        pred_acc[cluster][proficiency_level] += 1
+    
+    with open(logname, 'w') as f:
+        f.write("#" * 80 + "\n")
+        for index_i, i in enumerate(pred_acc):
+            f.write(f" >>> Cluster {index_i} | Total Count: {sum(i)}\n")
+            for index_j, j in enumerate(i):
+                if sum(i) > 0:
+                    f.write(f"Proficiency Level {index_j}: {100 * j / sum(i):.2f}% | Count: {j}\n")
+                else:
+                    f.write(f"Proficiency Level {index_j}: 0.00% | Count: 0\n")
+            f.write("\n")
+        f.write("#" * 80 + "\n")
+    print(f"Log saved at {logname}")
+
+    real_acc = np.eye(n_features, n_features)
+    pred_acc = pred_acc / np.sum(pred_acc, axis=1, keepdims=True)
+    # Calculate optimal assignment between real_acc and pred_acc using Hungarian algorithm
+    row_ind, col_ind = linear_sum_assignment(-np.dot(real_acc, pred_acc.T))
+    # Rearrange pred_acc rows according to optimal assignment
+    pred_acc_matched = pred_acc[col_ind]
+
+    # Calculate Mean Squared Error (MSE) based on optimal assignment
+    mse = np.mean((real_acc - pred_acc_matched) ** 2)
+    print(f"Clustering Mean Squared Error (MSE): {mse}. Detailed log saved at {logname}.")
+
+    return mse
 
 def parse_args():
 
@@ -90,6 +244,8 @@ def parse_args():
     # baselines
     parser.add_argument("--ddo", action="store_true")
     parser.add_argument("--expert_file", type=str, default="")
+    parser.add_argument("--exp_id", type=str, default="")
+    parser.add_argument("--eval_expert_file", type=str, default="")
     return parser.parse_args()
 
 
@@ -177,6 +333,7 @@ def main():
         output_normal = False
     elif "cheetah" in args.dataset_path:
         train_loader, test_loader = utils.hil_loader(args.batch_size, args.hil_seq_size)
+        full_loader = utils.cheetah_full_loader(1, args.eval_expert_file)
         action_encoder = LinearLayer(
             input_size=train_loader.dataset.action_size,
             output_size=args.belief_size)
@@ -192,6 +349,7 @@ def main():
         os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
     elif "cartpole" in args.dataset_path:
         train_loader, test_loader = utils.cartpole_loader(args.batch_size, args.hil_seq_size)
+        full_loader = utils.cartpole_full_loader(1, args.eval_expert_file)
         action_encoder = LinearLayer(
             input_size=train_loader.dataset.action_size,
             output_size=args.belief_size)
@@ -207,6 +365,7 @@ def main():
         os.chdir("/home/zichang/proj/IQ-Learn/iq_learn")
     elif "lunar" in args.dataset_path:
         train_loader, test_loader = utils.lunar_loader(args.batch_size, args.hil_seq_size)
+        full_loader = utils.lunar_full_loader(1, args.eval_expert_file)
         action_encoder = LinearLayer(
             input_size=train_loader.dataset.action_size,
             output_size=args.belief_size)
@@ -222,6 +381,23 @@ def main():
         os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
     elif "hopper" in args.dataset_path:
         train_loader, test_loader = utils.hopper_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
+        full_loader = utils.hopper_full_loader(1, args.eval_expert_file)
+        action_encoder = LinearLayer(
+            input_size=train_loader.dataset.action_size,
+            output_size=args.belief_size)
+        encoder = LinearLayer(
+            input_size=train_loader.dataset.obs_size,
+            output_size=args.belief_size)
+        decoder = GridDecoder(
+            input_size=args.belief_size,
+            action_size=train_loader.dataset.action_size,
+            feat_size=args.belief_size,
+        )
+        output_normal = True
+        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
+    elif "walker" in args.dataset_path:
+        train_loader, test_loader = utils.walker_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
+        full_loader = utils.walker_full_loader(1, args.eval_expert_file)
         action_encoder = LinearLayer(
             input_size=train_loader.dataset.action_size,
             output_size=args.belief_size)
@@ -236,7 +412,24 @@ def main():
         output_normal = True
         os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
     elif "ant" in args.dataset_path:
-        train_loader, test_loader = utils.ant_loader(args.batch_size, args.hil_seq_size)
+        train_loader, test_loader = utils.ant_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
+        full_loader = utils.ant_full_loader(1, args.eval_expert_file)
+        action_encoder = LinearLayer(
+            input_size=train_loader.dataset.action_size,
+            output_size=args.belief_size)
+        encoder = LinearLayer(
+            input_size=train_loader.dataset.obs_size,
+            output_size=args.belief_size)
+        decoder = GridDecoder(
+            input_size=args.belief_size,
+            action_size=train_loader.dataset.action_size,
+            feat_size=args.belief_size,
+        )
+        output_normal = True
+        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
+    elif "humanoid" in args.dataset_path:
+        train_loader, test_loader = utils.humanoid_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
+        full_loader = utils.humanoid_full_loader(1, args.eval_expert_file)
         action_encoder = LinearLayer(
             input_size=train_loader.dataset.action_size,
             output_size=args.belief_size)
@@ -305,6 +498,8 @@ def main():
     torch.autograd.set_detect_anomaly(False)
     b_idx = 0
     train_loss_list =[]
+
+    early_stopper = EarlyStopper(patience=3, min_delta=0)
     while b_idx <= args.max_iters:
         # for each batch
         # if args.dataset_path not in ["cheetah", "cartpole", "lunar"]:
@@ -613,22 +808,32 @@ def main():
                     train_stats["num_skills"] = sum(num_skills)/len(num_skills)
                     LOGGER.info(log_str, *log_data)
                     # LOGGER.info("ep: {:08}, training loss: {}".format(b_idx,train_total_loss.detach().cpu()))
+                    emb_list = run_exp(model.module.state_model, full_loader, "det", device)
+                    logname = os.path.join("result_clustering", args.name, args.exp_id, f"stage1_b{b_idx}.log")
+                    os.makedirs(os.path.dirname(logname), exist_ok=True)
+                    cluster_mse = clustering_report(emb_list, logname, 3)  # Adjust n_features as needed
+                    train_stats["cluster_mse"] = cluster_mse
                     wandb.log(train_stats, step=b_idx)
-                    avg_num_skills = sum(num_skills)/len(num_skills)
-                    if avg_num_skills<200:
-                        exp_dir = os.path.join("experiments", args.name)
+                
+                    if cluster_mse<=0.0001:
+                        exp_dir = os.path.join("experiments", args.name, args.exp_id)
+                        os.makedirs(exp_dir, exist_ok=True)
                         torch.save(
                             model.module.state_model, os.path.join(exp_dir, f"model-{b_idx}.ckpt")
                         )
-                        exit("num_skills < 200. Training has converged")
+                        print(f"Training has converged with cluster_mse {cluster_mse} Exiting...")
+                        sys.exit(0)
+                        
                 np.set_printoptions(threshold=100000)
                 torch.set_printoptions(threshold=100000)
                     
                 if b_idx % args.save_interval == 0 or b_idx==10 or b_idx==30:
-                    exp_dir = os.path.join("experiments", args.name)
+                    exp_dir = os.path.join("experiments", args.name, args.exp_id)
+                    os.makedirs(exp_dir, exist_ok=True)
                     torch.save(
                         model.module.state_model, os.path.join(exp_dir, f"model-{b_idx}.ckpt")
                     )
+                    
                     
                 #############
                 # test time #

@@ -1,8 +1,10 @@
 # @package _global_
 
 env:
+  short_name: humanoid
   name: Humanoid-v2
   demo: Humanoid-v2_25.pkl
+  cond: hopper/Hopper-v2_20_876r+3213r.pkl
   # learn_steps: 1e5
   # eval_interval: 1e3
 
@@ -21,6 +23,7 @@ expert:
 eval:
   policy: 
   threshold: 5000
+  upper: 1e6
 
 agent:
   name: sac

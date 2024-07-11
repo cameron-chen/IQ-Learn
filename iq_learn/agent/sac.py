@@ -225,6 +225,47 @@ class SAC(object):
         dist = self.actor(obs)
         log_prob = dist.log_prob(action).sum(dim=-1, keepdim=True)
         entropy = dist.entropy().sum(dim=-1, keepdim=True)
+        # check if log_prob is nan
+        if isinstance(obs, tuple):
+            # Iterate over each element in the tuple
+            for idx, obs_e in enumerate(obs):
+                if torch.isnan(obs_e).any():
+                    print(f'!!!!!!!!!!!!!!! obs element {idx} contains NaN values')
+                    print("Obs with nan:",obs_e)
+                    raise ValueError("Obs contains NaN values.")
+        else:
+            # If dist is not a tuple, assume it's already the tensor
+            if torch.isnan(obs).any():
+                print("Obs with nan:", obs)
+                raise ValueError("Obs contains NaN values.")
+        if isinstance(action, tuple):
+            # Iterate over each element in the tuple
+            for idx, i in enumerate(action):
+                if torch.isnan(i).any():
+                    print(f'!!!!!!!!!!!!!!! action element {idx} contains NaN values')
+                    print("Act with nan:", i)
+                    raise ValueError("Act contains NaN values.")
+        else:
+            # If dist is not a tuple, assume it's already the tensor
+            if torch.isnan(action).any():
+                print("Act with nan:", action)
+                raise ValueError("Act contains NaN values.")
+        
+        if torch.isnan(log_prob).any():
+            print('!!!!!!!!!!!!!!! log_prob is nan')
+            print("Action: ",action)
+            print("Dist:", dist)
+            print("Distribution parameters:")
+            for param_name, param_value in dist.__dict__.items():
+                print(f"{param_name}: {param_value}")
+                if isinstance(param_value, torch.Tensor):
+                    # Check if param_value tensor contains NaN values
+                    if torch.isnan(param_value).any():
+                        print(f"!!!!!!!!!!!!!!! {param_name} contains NaN values")
+                        print(f"{param_name}: {param_value}")
+                else:
+                    print(f"{param_name}: {param_value} (not a tensor)")
+                    print("param_value: ", param_value)
         return dist, log_prob, entropy
 
     # Save model parameters

@@ -66,6 +66,7 @@ defaults:
   - env: cartpole
 
 bc_steps: 1000
-exp_dir: ''
-encoder: ''
+bc_save_interval: 500
+exp_dir: '/home/zichang/proj/IQ-Learn/iq_learn/encoder/experiments/hopper/'
+encoder: 'model-10.ckpt'
 expert_gen_steps: 1000
