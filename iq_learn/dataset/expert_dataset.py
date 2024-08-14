@@ -29,7 +29,7 @@ class ExpertDataset(Dataset):
                  seed: int = 0,
                  cond_dim: int = 10,
                  cond_type: str = "random",
-                 cond_location: str = '/home/zichang/proj/IQ-Learn/iq_learn/cond/cheetah.pkl'):
+                 conds: dict = None):
         """Subsamples an expert dataset from saved expert trajectories.
 
         Args:
@@ -77,13 +77,6 @@ class ExpertDataset(Dataset):
 
             self.get_idx.append((traj_idx, i))
             i += 1
-        print(f"--> Reading cond from {cond_location}")
-        if os.path.isfile(cond_location):
-            # Load data from single file. if conds does not exist, return error
-            with open(cond_location, 'rb') as f:
-                conds = read_file(cond_location, f)
-        else:
-            raise ValueError(f"{cond_location} is not a valid path")
         # print("conds length: ", len(self.conds))
         # print("trajectories length: ", len(self.trajectories["states"]))
         # apply permutation to cond

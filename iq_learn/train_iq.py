@@ -64,7 +64,7 @@ def main(cfg: DictConfig):
                 sync_tensorboard=True, 
                 reinit=True, 
                 config=args, 
-                name=f"{args.env.name} bc_init{args.method.bc_init} cond_dim={args.cond_dim} method.kld_alpha={args.method.kld_alpha}"
+                name=f"{args.env.short_name} bc_init{args.method.bc_init} lr={args.agent.actor_lr} init_t={args.agent.init_temp}"
             )
         else: 
             exp_name = args.env.demo
@@ -111,6 +111,14 @@ def main(cfg: DictConfig):
             print("[Attention]: Did not find checkpoint {}".format(args.pretrain))
 
     # Load expert data
+    conds = None
+    cond_location = hydra.utils.to_absolute_path(f'cond/{args.env.cond}')
+    if os.path.isfile(cond_location):
+        # Load data from single file.
+        with open(cond_location, 'rb') as f:
+            conds = read_file(cond_location, f)
+    else:
+        raise ValueError(f"Condition file {cond_location} not found")
     expert_memory_replay = Memory(REPLAY_MEMORY//2, args.seed)
     expert_memory_replay.load(hydra.utils.to_absolute_path(f'experts/{args.env.demo}'),
                               num_trajs=args.expert.demos,
@@ -118,7 +126,7 @@ def main(cfg: DictConfig):
                               seed=args.seed + 42,
                               cond_dim=args.cond_dim,
                               cond_type=args.cond_type,
-                              cond_location=hydra.utils.to_absolute_path(f'cond/{args.env.cond}'))
+                              conds=conds)
     print(f'--> Expert memory size: {expert_memory_replay.size()}')
 
     online_memory_replay = Memory(REPLAY_MEMORY//2, args.seed+1)
@@ -149,6 +157,12 @@ def main(cfg: DictConfig):
     # print work dir
     # change work dir to encoder dir
     # os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
+    agent.loss_calculator = BehaviorCloningLossCalculator(
+            ent_weight=1e-3,  # args.method.bc_ent_weight,
+            l2_weight=0.0,  # args.method.bc_l2_weight,
+            kld_weight=args.method.kld_alpha,  # args.method.bc_kld_weight,
+        )
+    agent.bc_alpha = args.method.bc_alpha
     if args.method.bc_init:
         sys.path.append('/home/zichang/proj/IQ-Learn/iq_learn/encoder')
         print("Current working directory: ", os.getcwd())
@@ -205,27 +219,29 @@ def main(cfg: DictConfig):
         print(f"Encoder Loaded: {checkpoint}, optimizer ready")
         # bc loss function
         # if args.method.enable_bc_actor_update:
-        agent.loss_calculator = BehaviorCloningLossCalculator(
-            ent_weight=1e-3,  # args.method.bc_ent_weight,
-            l2_weight=0.0,  # args.method.bc_l2_weight,
-            kld_weight=args.method.kld_alpha,  # args.method.bc_kld_weight,
-        )
-        agent.bc_alpha = args.method.bc_alpha
+        # agent.loss_calculator = BehaviorCloningLossCalculator(
+        #     ent_weight=1e-3,  # args.method.bc_ent_weight,
+        #     l2_weight=0.0,  # args.method.bc_l2_weight,
+        #     kld_weight=args.method.kld_alpha,  # args.method.bc_kld_weight,
+        # )
+        # agent.bc_alpha = args.method.bc_alpha
         # encoder is model.ckpt, remove ".ckpt"
         encoder_name = args.encoder.split(".")[0]
-        unique_temp_cond_file = f"cond/{args.env.short_name}/temp_{args.env.name}_{encoder_name}.pkl"
-        # unique_temp_cond_file= "cond/temp_cond.pkl"
-        print(f"-> Unique temp cond file: {unique_temp_cond_file}")
+        # find parent folder of checkpoint and give to exp_id
+        exp_id = os.path.basename(os.path.dirname(args.exp_dir))
+        # unique_temp_cond_file = f"cond/{args.env.short_name}/{exp_id}/temp_{args.env.name}_{encoder_name}.pkl"
+        # # unique_temp_cond_file= "cond/temp_cond.pkl"
+        # print(f"-> Unique temp cond file: {unique_temp_cond_file}")
         
     # BC initialization
     if args.method.bc_init:
         agent.bc_update = types.MethodType(bc_update, agent)
-        cond_read_file = hydra.utils.to_absolute_path(f'cond/{args.env.cond}')
-        if os.path.isfile(cond_read_file):
-            # Load data from single file.
-            with open(cond_read_file, 'rb') as f:
-                emb_list = read_file(cond_read_file, f)
-        logit_m = emb_list["logit_m"]
+        # cond_read_file = hydra.utils.to_absolute_path(f'cond/{args.env.cond}')
+        # if os.path.isfile(cond_read_file):
+        #     # Load data from single file.
+        #     with open(cond_read_file, 'rb') as f:
+        #         emb_list = read_file(cond_read_file, f)
+        logit_m = conds["logit_m"]
         logit_array_0, m_array_0 = logit_m[0]
         first_mu_0 = get_mu_logvar(logit_array_0, m_array_0, encoder, device)[1].detach().cpu().numpy()
         early_stopper = EarlyStopper(patience=3, min_delta=-0.2)
@@ -311,7 +327,6 @@ def main(cfg: DictConfig):
                 emb_list = update_expert_memory(
                     encoder, 
                     hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), 
-                    hydra.utils.to_absolute_path(unique_temp_cond_file), 
                     device)
                 logit_m = emb_list["logit_m"]
                 expert_memory_replay.clear()
@@ -321,7 +336,7 @@ def main(cfg: DictConfig):
                               seed=args.seed + 42,
                               cond_dim=args.cond_dim,
                               cond_type=args.cond_type,
-                              cond_location=hydra.utils.to_absolute_path(unique_temp_cond_file))
+                              conds=emb_list)
                 print(f'--> New expert memory size: {expert_memory_replay.size()}')
             # save the encoder every 500 steps
             if (learn_steps_bc % args.bc_save_interval == 0 or learn_steps_bc==10) and learn_steps_bc > 0:
@@ -340,7 +355,7 @@ def main(cfg: DictConfig):
         state = env.reset()
         episode_reward = 0
         done = False
-        cond = get_random_cond(args.cond_dim, args.cond_type, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'))
+        cond = get_random_cond(args.cond_dim, args.cond_type, conds)
         start_time = time.time()
         for episode_step in range(EPISODE_STEPS): # n of steps
             if steps < args.num_seed_steps:
@@ -447,7 +462,7 @@ def get_new_cond(encoder, logit_m, device, traj_idx_list):
         new_emb_list["dist_params"].append((mu, logvar))
     return new_emb_list
 
-def update_expert_memory(encoder, expert_file, cond_save_file, device):
+def update_expert_memory(encoder, expert_file, device):
     full_loader = cheetah_full_loader(1, expert_file)
     encoder.post_obs_state._output_normal = True
     encoder._output_normal = True
@@ -478,8 +493,6 @@ def update_expert_memory(encoder, expert_file, cond_save_file, device):
     # save numpy arrays for file
     emb_list["emb"] = [i.detach().cpu().numpy() for i in emb_list["emb"]]
     emb_list["dist_params"] = [(i[0].detach().cpu().numpy(), i[1].detach().cpu().numpy()) for i in emb_list["dist_params"]]
-    with open(cond_save_file, 'wb') as f:
-        pickle.dump(emb_list, f)
     return emb_list
 
 def reparameterize(mu, logvar):
@@ -495,11 +508,7 @@ def reparameterize(mu, logvar):
     return eps * std + mu
 
 # cond_type: 1 for real indexed, 0 for fixed index 0, -1 for [-1]*cond_dim
-def get_random_cond(cond_dim, cond_type, cond_location):
-    if os.path.isfile(cond_location):
-        # Load data from single file.
-        with open(cond_location, 'rb') as f:
-            conds = read_file(cond_location, f)
+def get_random_cond(cond_dim, cond_type, conds):
     conds = conds["emb"]
     # select random index from conds length
     index = random.randint(0, len(conds)-1)

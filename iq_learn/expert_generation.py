@@ -45,11 +45,18 @@ def main(cfg: DictConfig):
         print(f"Env short name : {args.env.short_name}")
         print(f"Env name : {args.env.name}")
         print("--> Training model, please expect a long training time")
-        for i in range(TOTAL_EPOCHS):
-            agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS, log_interval=100)
-            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/{args.env.short_name}/{(i+1)*TRAIN_TIMESTEPS}.zip'
+        three_level = False
+        if three_level:
+            for i in range(TOTAL_EPOCHS):
+                agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS, log_interval=10)
+                model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/{args.env.short_name}/{(i+1)*TRAIN_TIMESTEPS}.zip'
+                agent.save(model_save_path)
+            # agent.load_state_dict(torch.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/policy.pth"))
+            
+        else:
+            agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS, log_interval=10)
+            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/{args.env.short_name}/{TRAIN_TIMESTEPS}.zip'
             agent.save(model_save_path)
-        # agent.load_state_dict(torch.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/policy.pth"))
         exit("Training done, please rerun the script with use_baselines=False to generate expert trajectories")
     else: # load model directly
         if args.eval.policy:
@@ -99,7 +106,7 @@ def main(cfg: DictConfig):
     for epoch in count():
         if saved_eps >= MAX_EPS:
             break
-        if epoch > 100*MAX_EPS:
+        if epoch > 300*MAX_EPS:
             print('Max episodes reached')
             break
         vec_env = agent.get_env()

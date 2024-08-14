@@ -37,11 +37,11 @@ class Memory(object):
         print(b.shape)
         np.save(path, b)
 
-    def load(self, path, num_trajs, sample_freq, seed, cond_dim, cond_type, cond_location):
+    def load(self, path, num_trajs, sample_freq, seed, cond_dim, cond_type, conds):
         # If path has no extension add npy
         if not path.endswith("pkl"):
             path += '.npy'
-        data = ExpertDataset(path, num_trajs, sample_freq, seed, cond_dim, cond_type, cond_location)
+        data = ExpertDataset(path, num_trajs, sample_freq, seed, cond_dim, cond_type, conds)
         # data = np.load(path, allow_pickle=True)
         for i in range(len(data)):
             self.add(data[i])
