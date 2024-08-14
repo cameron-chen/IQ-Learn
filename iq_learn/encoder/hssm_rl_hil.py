@@ -260,12 +260,19 @@ class HierarchicalStateSpaceModel(nn.Module):
         #######################
         # observation encoder #
         #######################
-        if action_list.size(-1)!= 1 and action_list.size(0)!=1: # if action dimension is 1, do not squeeze it
+        if action_list.size(-1) == full_seq_size: # if action list is (B, S), make it (B, S, 1)
+            enc_obs_list = torch.squeeze(obs_data_list) # [B, S, D]
+            enc_obs_list = self.enc_obs(enc_obs_list)
+
+            action_list = action_list.unsqueeze(-1)  # From (B, S) to (B, S, 1)
+            enc_action_list = self.action_encoder(action_list) # Now enc_action_list is [B, S, D] without squeezing
+        elif action_list.size(-1)!= 1 and action_list.size(0)!=1: # if action dimension is 1, do not squeeze it
             enc_obs_list =  torch.squeeze(obs_data_list) # [B, S, D]
             enc_obs_list = self.enc_obs(enc_obs_list)
 
             enc_action_list = torch.squeeze(action_list) # [B, S, D]
             enc_action_list = self.action_encoder(enc_action_list)
+        
         else:
             enc_obs_list =  obs_data_list # [B, S, D]
             enc_obs_list = self.enc_obs(enc_obs_list)
@@ -278,6 +285,22 @@ class HierarchicalStateSpaceModel(nn.Module):
         mask = torch.ones_like(shifted_enc_actions, device=shifted_enc_actions.device)
         mask[:, 0, :] = 0
         shifted_enc_actions = shifted_enc_actions * mask
+
+        # Print the shapes to debug
+        # print(f"enc_action_list shape: {enc_action_list.shape}")  # Expected: [B, 1000, 1]
+        # print(f"enc_obs_list shape: {enc_obs_list.shape}")        # Expected: [B, 1000, D]
+        # print(f"shifted_enc_actions shape: {shifted_enc_actions.shape}")  # Expected: [B, 1000, 1]
+        # Ensure enc_obs_list has the same number of dimensions as enc_action_list
+        if enc_obs_list.dim() > enc_action_list.dim() or enc_obs_list.dim() > shifted_enc_actions.dim():
+            enc_action_list = enc_action_list.unsqueeze(0)
+            shifted_enc_actions = shifted_enc_actions.unsqueeze(0)
+        elif enc_action_list.dim() > enc_obs_list.dim() or shifted_enc_actions.dim() > enc_obs_list.dim():
+            enc_obs_list = enc_obs_list.unsqueeze(0)
+            
+        
+        # print(f"squeezed enc_action_list shape: {enc_action_list.shape}")  # Expected: [B, 1000, 1]
+        # print(f"squeezed enc_obs_list shape: {enc_obs_list.shape}")        # Expected: [B, 1000, D]
+        # print(f"squeezed shifted_enc_actions shape: {shifted_enc_actions.shape}")  # Expected: [B, 1000, 1]
 
         enc_combine_obs_action_list = self.combine_action_obs(
             torch.cat((enc_action_list, enc_obs_list), -1)
@@ -774,6 +797,9 @@ class HierarchicalStateSpaceModel(nn.Module):
         # observation encoder #
         #######################
         enc_obs_list = self.enc_obs(obs_data_list)
+
+        if action_list.size(-1) == full_seq_size: # if action list is (B, S), make it (B, S, 1)
+            action_list = action_list.unsqueeze(-1)  # From (B, S) to (B, S, 1)
         enc_action_list = self.action_encoder(action_list)
 
         # Shift sequence length dimension forward and 0 out first one

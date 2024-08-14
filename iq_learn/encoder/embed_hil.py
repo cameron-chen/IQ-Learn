@@ -30,7 +30,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 
-def run_exp(config, expert_file, datafile, embed_mode):
+def run_exp(config, expert_file, datafile, embed_mode, cond_dim):
     hssm = torch.load(config.get("checkpoint")).cpu()
     hssm._use_min_length_boundary_mask = True
     hssm.eval()
@@ -64,6 +64,18 @@ def run_exp(config, expert_file, datafile, embed_mode):
         full_loader = utils.lunar_full_loader(1, expert_file)
         hssm.post_obs_state._output_normal = True
         hssm._output_normal = True
+    elif config.get("env") == "swimmer":
+        full_loader = utils.swimmer_full_loader(1, expert_file)
+        hssm.post_obs_state._output_normal = True
+        hssm._output_normal = True
+    elif config.get("env") == "invertedp":
+        full_loader = utils.invertedp_full_loader(1, expert_file)
+        hssm.post_obs_state._output_normal = True
+        hssm._output_normal = True
+    elif config.get("env") == "lunarlander":
+        full_loader = utils.lunarlander_full_loader(1, expert_file)
+        hssm.post_obs_state._output_normal = True
+        hssm._output_normal = True
     else:
         raise ValueError()
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -79,52 +91,61 @@ def run_exp(config, expert_file, datafile, embed_mode):
         # action_list 100 1000 6
         # trai_level_list 100
         b_idx += 1
-        obs_list = obs_list.to(device)
-        action_list = action_list.to(device)
-        results = hssm(obs_list, action_list, seq_size, init_size)
-        if embed_mode == "det": # deterministic encoding
-            emb_list["emb"].extend(results[-3]) 
-        else:
-            mean, std = hssm.get_dist_params()
-            if embed_mode == "mean": # mean as embedding 
-                mean = mean.detach().cpu().numpy()
-                emb_list["emb"].extend(mean)
-            elif embed_mode == "prob": # probabilistic encoding
-                def reparameterize(mu, logvar):
-                    """
-                    Reparameterization trick to sample from N(mu, var) from
-                    N(0,1).
-                    :param mu: (Tensor) Mean of the latent Gaussian [B x D]
-                    :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
-                    :return: (Tensor) [B x D]
-                    """
-                    std = torch.exp(0.5 * logvar)
-                    # std = std/100
-                    eps = torch.randn_like(std)
-                    return eps * std + mu
-                emb = reparameterize(mean, std)
-                emb = emb.detach().cpu().numpy()
-                emb_list["emb"].extend(emb)
+        if embed_mode !="dummy":
+            obs_list = obs_list.to(device)
+            action_list = action_list.to(device)
+            results = hssm(obs_list, action_list, seq_size, init_size)
+            if embed_mode == "det": # deterministic encoding
+                emb_list["emb"].extend(results[-3]) 
             else:
-                raise ValueError("Invalid embedding mode")
-        ## --> Use dummy value to replace the embedding
-        # if count<=9:
-        #     dummy_value = -1
-        # else:
-        #     dummy_value = 1
-        # count += 1
-        # # create dummy which is the same shape as result[-3] and the values are dummy_value
-        # dummy = [[dummy_value for i in range(len(j))] for j in results[-3]]
-        # emb_list["emb"].extend(dummy)
+                mean, std = hssm.get_dist_params()
+                if embed_mode == "mean": # mean as embedding 
+                    mean = mean.detach().cpu().numpy()
+                    emb_list["emb"].extend(mean)
+                elif embed_mode == "prob": # probabilistic encoding
+                    def reparameterize(mu, logvar):
+                        """
+                        Reparameterization trick to sample from N(mu, var) from
+                        N(0,1).
+                        :param mu: (Tensor) Mean of the latent Gaussian [B x D]
+                        :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
+                        :return: (Tensor) [B x D]
+                        """
+                        std = torch.exp(0.5 * logvar)
+                        # std = std/100
+                        eps = torch.randn_like(std)
+                        return eps * std + mu
+                    emb = reparameterize(mean, std)
+                    emb = emb.detach().cpu().numpy()
+                    emb_list["emb"].extend(emb)
+                else:
+                    raise ValueError("Invalid embedding mode")
+            ## --> Use dummy value to replace the embedding
+            # if count<=9:
+            #     dummy_value = -1
+            # else:
+            #     dummy_value = 1
+            # count += 1
+            # # create dummy which is the same shape as result[-3] and the values are dummy_value
+            # dummy = [[dummy_value for i in range(len(j))] for j in results[-3]]
+            # emb_list["emb"].extend(dummy)
 
-        emb_list["num_m"].extend([len(i) for i in results[-4]])
-        emb_list["level"].extend(level_list)
-        emb_list["num_z"].extend([len(i) for i in results[-2]])
-        emb_list["z"].extend(results[-1])
-        logit_arrays, m_arrays = hssm.get_logit_m()
-        emb_list["logit_m"].append((logit_arrays, m_arrays))
-        if b_idx >= 500:
-            break
+            emb_list["num_m"].extend([len(i) for i in results[-4]])
+            emb_list["level"].extend(level_list)
+            emb_list["num_z"].extend([len(i) for i in results[-2]])
+            emb_list["z"].extend(results[-1])
+            logit_arrays, m_arrays = hssm.get_logit_m()
+            emb_list["logit_m"].append((logit_arrays, m_arrays))
+            if b_idx >= 1000000:
+                print("Stopped early at 1000000 batches")
+                break
+        elif embed_mode == "dummy":
+            # make a [1, cond_dim] dummy condition copying the level_list as a float32
+            dummy_cond = np.array(level_list).astype(np.float32)
+            dummy_cond = [[dummy_cond[0] for i in range(cond_dim)]]
+            emb_list["emb"].extend(dummy_cond)
+        else:
+            raise ValueError("Invalid embedding mode")
     ## --> Normalize the emb using z score normalization
     emb_list["emb"] = zscore(emb_list["emb"])
     os.makedirs(os.path.dirname(datafile), exist_ok=True)
@@ -401,8 +422,9 @@ def main():
     arg_parser.add_argument("--obs-std", type=float, default=1.0)
     arg_parser.add_argument("--batchsize", type=int, default=8)
     arg_parser.add_argument("--n_features", type=int, default=3)
-    arg_parser.add_argument("--embed_mode", type=str, default="det", help="det, mean or prob", choices=["det", "mean", "prob"])
+    arg_parser.add_argument("--embed_mode", type=str, default="det", help="det, mean, dummy or prob", choices=["det", "mean", "dummy", "prob"])
     arg_parser.add_argument("--exp_id", type=str, default="no_id", help="experiment id for saving")
+    arg_parser.add_argument("--cond_dim", type=int, default=10, help="condition dimension")
     args = arg_parser.parse_args()
     config = cfg.Config.from_files_and_bindings(
             args.configs, args.config_bindings)
@@ -423,13 +445,14 @@ def main():
 
     print(f"Fetching data...")
     datadir = f"../cond/{env_name}/{args.exp_id}"
+    os.makedirs(datadir, exist_ok=True)
     datafile = os.path.join(datadir,args.exp_name + ".pkl")
     if os.path.isfile(datafile):
         with open(datafile, 'rb') as f:
             emb_list = pickle.load(f)
         print("Loaded previous data")
     else:
-        emb_list = run_exp(config, args.expert_file, datafile, args.embed_mode)
+        emb_list = run_exp(config, args.expert_file, datafile, args.embed_mode, args.cond_dim)
         print("Saved data")
     
     LOGGER.info(">>> Num of skills in one traj: {}~{}, Average {}".format(min(emb_list["num_z"]), 

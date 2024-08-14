@@ -1,12 +1,15 @@
 # @package _global_
 
 env:
-  short_name: lunarlander
-  name: LunarLander-v2
-  demo: InvertedPendulum-v2_25.pkl
-  cond: invertedp/InvertedPendulum-v2_20_876r+3213r.pkl
+  short_name: swimmer
+  name: Swimmer-v2
+  demo: Swimmer-v2_25.pkl
+  cond: swimmer/Swimmer-v2_20_876r+3213r.pkl
+  # learn_steps: 1e5
+  # eval_interval: 1e3
 
   replay_mem: 1e6
+  # initial_mem: 10000
 
   eps_steps: 100000
   eps_window: 10
@@ -15,7 +18,7 @@ env:
 
 expert:
   demos: 1
-  subsample_freq: 5
+  subsample_freq: 1
 
 eval:
   policy: 
@@ -23,7 +26,7 @@ eval:
   upper: 1e6
 
 agent:
-  name: softq
+  name: sac
 
 log_interval: 500  # Log every this many steps
 num_actor_updates: 1
@@ -34,4 +37,4 @@ train:
   batch: 256
 
 q_net:
-  _target_: agent.softq_models.OfflineQNetwork
+  _target_: agent.sac_models.SingleQCritic

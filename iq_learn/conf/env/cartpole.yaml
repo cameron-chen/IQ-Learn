@@ -1,6 +1,7 @@
 # @package _global_
 
 env:
+  shortname: cartpole
   name: CartPole-v1
   demo: CartPole-v1_1000 # Expert demo containing upto 1000 trajectories
   cond: cartpole.pkl

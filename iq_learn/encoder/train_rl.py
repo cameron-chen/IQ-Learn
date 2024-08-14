@@ -363,22 +363,22 @@ def main():
         )
         output_normal = True
         os.chdir("/home/zichang/proj/IQ-Learn/iq_learn")
-    elif "lunar" in args.dataset_path:
-        train_loader, test_loader = utils.lunar_loader(args.batch_size, args.hil_seq_size)
-        full_loader = utils.lunar_full_loader(1, args.eval_expert_file)
-        action_encoder = LinearLayer(
-            input_size=train_loader.dataset.action_size,
-            output_size=args.belief_size)
-        encoder = LinearLayer(
-            input_size=train_loader.dataset.obs_size,
-            output_size=args.belief_size)
-        decoder = GridDecoder(
-            input_size=args.belief_size,
-            action_size=train_loader.dataset.action_size,
-            feat_size=args.belief_size,
-        )
-        output_normal = True
-        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
+    # elif "lunar" in args.dataset_path:
+    #     train_loader, test_loader = utils.lunar_loader(args.batch_size, args.hil_seq_size)
+    #     full_loader = utils.lunar_full_loader(1, args.eval_expert_file)
+    #     action_encoder = LinearLayer(
+    #         input_size=train_loader.dataset.action_size,
+    #         output_size=args.belief_size)
+    #     encoder = LinearLayer(
+    #         input_size=train_loader.dataset.obs_size,
+    #         output_size=args.belief_size)
+    #     decoder = GridDecoder(
+    #         input_size=args.belief_size,
+    #         action_size=train_loader.dataset.action_size,
+    #         feat_size=args.belief_size,
+    #     )
+    #     output_normal = True
+    #     os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
     elif "hopper" in args.dataset_path:
         train_loader, test_loader = utils.hopper_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
         full_loader = utils.hopper_full_loader(1, args.eval_expert_file)
@@ -430,6 +430,54 @@ def main():
     elif "humanoid" in args.dataset_path:
         train_loader, test_loader = utils.humanoid_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
         full_loader = utils.humanoid_full_loader(1, args.eval_expert_file)
+        action_encoder = LinearLayer(
+            input_size=train_loader.dataset.action_size,
+            output_size=args.belief_size)
+        encoder = LinearLayer(
+            input_size=train_loader.dataset.obs_size,
+            output_size=args.belief_size)
+        decoder = GridDecoder(
+            input_size=args.belief_size,
+            action_size=train_loader.dataset.action_size,
+            feat_size=args.belief_size,
+        )
+        output_normal = True
+        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
+    elif "swimmer" in args.dataset_path:
+        train_loader, test_loader = utils.swimmer_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
+        full_loader = utils.swimmer_full_loader(1, args.eval_expert_file)
+        action_encoder = LinearLayer(
+            input_size=train_loader.dataset.action_size,
+            output_size=args.belief_size)
+        encoder = LinearLayer(
+            input_size=train_loader.dataset.obs_size,
+            output_size=args.belief_size)
+        decoder = GridDecoder(
+            input_size=args.belief_size,
+            action_size=train_loader.dataset.action_size,
+            feat_size=args.belief_size,
+        )
+        output_normal = True
+        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
+    elif "invertedp" in args.dataset_path:
+        train_loader, test_loader = utils.invertedp_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
+        full_loader = utils.invertedp_full_loader(1, args.eval_expert_file)
+        action_encoder = LinearLayer(
+            input_size=train_loader.dataset.action_size,
+            output_size=args.belief_size)
+        encoder = LinearLayer(
+            input_size=train_loader.dataset.obs_size,
+            output_size=args.belief_size)
+        decoder = GridDecoder(
+            input_size=args.belief_size,
+            action_size=train_loader.dataset.action_size,
+            feat_size=args.belief_size,
+        )
+        output_normal = True
+        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
+    elif "lunarlander" in args.dataset_path:
+        train_loader, test_loader = utils.lunarlander_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
+        full_loader = utils.lunarlander_full_loader(1, args.eval_expert_file)
         action_encoder = LinearLayer(
             input_size=train_loader.dataset.action_size,
             output_size=args.belief_size)
@@ -815,7 +863,7 @@ def main():
                     train_stats["cluster_mse"] = cluster_mse
                     wandb.log(train_stats, step=b_idx)
                 
-                    if cluster_mse<=0.0001:
+                    if cluster_mse<=0.0001 and sum(num_skills)/len(num_skills) < 200:
                         exp_dir = os.path.join("experiments", args.name, args.exp_id)
                         os.makedirs(exp_dir, exist_ok=True)
                         torch.save(
