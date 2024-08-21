@@ -1,6 +1,7 @@
 # @package _global_
 
 env:
+  short_name: cheetah
   name: HalfCheetah-v2
   demo: HalfCheetah-v2_25.pkl
   cond: cheetah.pkl
@@ -22,7 +23,8 @@ expert:
 eval:
   policy: 
   # use_baselines: True
-  threshold: 5000
+  threshold: 0
+  upper: 10e8
 
 agent:
   name: sac

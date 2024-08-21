@@ -64,7 +64,7 @@ def main(cfg: DictConfig):
                 sync_tensorboard=True, 
                 reinit=True, 
                 config=args, 
-                name=f"{args.env.short_name} bc_init{args.method.bc_init} lr={args.agent.actor_lr} init_t={args.agent.init_temp}"
+                name=f"{args.env.short_name} bc_init{args.method.bc_init} {args.additional_loss} {args.cql_coef}"
             )
         else: 
             exp_name = args.env.demo
@@ -75,6 +75,9 @@ def main(cfg: DictConfig):
                 config=args, 
                 name=f"{args.env.name} iq-learn only"
             )
+    
+    if (not args.method.bc_init):
+        print(f'[Critic]: use {args.additional_loss}*{args.cql_coef} ({args.num_random} randoms) loss')
 
     # set seeds
     random.seed(args.seed)
@@ -210,9 +213,9 @@ def main(cfg: DictConfig):
                 param.requires_grad = True
 
         # Print all layers and sub-layers
-        print("\nModel layers using model.modules():")
-        for layer in encoder.modules():
-            print(layer)
+        # print("\nModel layers using model.modules():")
+        # for layer in encoder.modules():
+        #     print(layer)
 
 
         encoder_optimizer = Adam(params=encoder.parameters(), lr=3e-05, amsgrad=True)
@@ -667,8 +670,39 @@ def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_type):
         q1_loss, loss_dict1 = iq_loss(agent, current_Q1, current_V, next_V, batch, cond_type)
         q2_loss, loss_dict2 = iq_loss(agent, current_Q2, current_V, next_V, batch, cond_type)
         critic_loss = 1/2 * (q1_loss + q2_loss)
+
+        # additional_loss = "CQL", "current_Q", "combined_loss", "none"
+        additional_loss = args.additional_loss
+        if additional_loss == "CQL":
+            fixed_current_Q = 0
+            cql_loss_1 = self.cqlV((obs, cond), self.critic.Q1,args.num_random) - fixed_current_Q
+            cql_loss_2 = self.cqlV((obs, cond), self.critic.Q2,args.num_random) - fixed_current_Q
+            cql_loss = args.cql_coef*(cql_loss_1+cql_loss_2)/2    
+        elif additional_loss == "current_Q":
+            # Assume policy_batch and expert_batch are tensors or numpy arrays
+            # Get the sizes of the policy and expert batches
+            policy_batch_size = policy_obs.shape[0]
+            expert_batch_size = expert_obs.shape[0]
+
+            # Create is_expert mask: False for policy_batch, True for expert_batch
+            is_expert = torch.cat([
+                torch.zeros(policy_batch_size, dtype=torch.bool), 
+                torch.ones(expert_batch_size, dtype=torch.bool)
+            ], dim=0).to(policy_obs.device)
+            current_Q1 = current_Q1[~is_expert]
+            current_Q2 = current_Q2[~is_expert]
+            cql_loss = args.cql_coef*(-current_Q1.mean()-current_Q2.mean())/2    
+        elif additional_loss == "combined_loss":  
+            cql_loss_1 = self.cqlV((obs, cond), self.critic.Q1,args.num_random) - current_Q1.mean()
+            cql_loss_2 = self.cqlV((obs, cond), self.critic.Q2,args.num_random) - current_Q2.mean()
+            cql_loss = args.cql_coef*(cql_loss_1+cql_loss_2)/2    
+        else:
+            cql_loss = 0
+
+        critic_loss += cql_loss
         # merge loss dicts
         loss_dict = average_dicts(loss_dict1, loss_dict2)
+        loss_dict["cql_loss"] = cql_loss
     else:
         # current_Q = self.critic(obs, action)
         if cond_type=="none":
@@ -678,6 +712,9 @@ def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_type):
         else:
             current_Q = self.critic((obs, action, cond))
         critic_loss, loss_dict = iq_loss(agent, current_Q, current_V, next_V, batch, cond_type)
+        cql_loss = args.cql_coef*(self.cqlV((obs, cond), self.critic.Q,args.num_random) - current_Q.mean())
+        critic_loss += cql_loss
+        loss_dict["cql_loss"] = cql_loss
     logger.log('train/critic_loss', critic_loss, step)
 
     # Optimize the critic

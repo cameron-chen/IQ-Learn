@@ -311,30 +311,47 @@ class SAC(object):
 
     def sample_actions(self, obs, num_actions):
         """For CQL style training."""
+        obs, cond = obs
+        # Process `obs` and `cond` separately
         obs_temp = obs.unsqueeze(1).repeat(1, num_actions, 1).view(
             obs.shape[0] * num_actions, obs.shape[1])
-        action, log_prob, _ = self.actor.sample(obs_temp)
+        
+        cond_temp = cond.unsqueeze(1).repeat(1, num_actions, 1).view(
+            cond.shape[0] * num_actions, cond.shape[1])
+        
+        # Combine them again if needed
+        combined_temp = torch.cat([obs_temp, cond_temp], dim=-1)
+        # obs_temp = obs.unsqueeze(1).repeat(1, num_actions, 1).view(
+        #     obs.shape[0] * num_actions, obs.shape[1])
+        action, log_prob, _ = self.actor.sample((obs_temp, cond_temp))
+
         return action, log_prob.view(obs.shape[0], num_actions, 1)
 
     def _get_tensor_values(self, obs, actions, network=None):
         """For CQL style training."""
+        obs, cond = obs
         action_shape = actions.shape[0]
         obs_shape = obs.shape[0]
         num_repeat = int(action_shape / obs_shape)
         obs_temp = obs.unsqueeze(1).repeat(1, num_repeat, 1).view(
             obs.shape[0] * num_repeat, obs.shape[1])
-        preds = network(obs_temp, actions)
+        cond_temp = cond.unsqueeze(1).repeat(1, num_repeat, 1).view(
+            cond.shape[0] * num_repeat, cond.shape[1])
+        obs_cond = torch.cat([obs_temp,cond_temp],dim=-1)
+        action_cond = torch.cat([actions, cond_temp], dim=-1)
+        obs_cond_action_cond = torch.cat([obs_cond, action_cond], dim=-1)
+        preds = network(obs_cond_action_cond)
         preds = preds.view(obs.shape[0], num_repeat, 1)
         return preds
 
     def cqlV(self, obs, network, num_random=10):
         """For CQL style training."""
         # importance sampled version
-        action, log_prob = self.sample_actions(obs, num_random)
+        action, log_prob = self.sample_actions(obs, num_random) # policy action
         current_Q = self._get_tensor_values(obs, action, network)
-
+        obs_shape = obs[0].shape[0] # input obs consist of (obs,cond)
         random_action = torch.FloatTensor(
-            obs.shape[0] * num_random, action.shape[-1]).uniform_(-1, 1).to(self.device)
+            obs_shape * num_random, action.shape[-1]).uniform_(-1, 1).to(self.device) # random action
 
         random_density = np.log(0.5 ** action.shape[-1])
         rand_Q = self._get_tensor_values(obs, random_action, network)
