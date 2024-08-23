@@ -70,6 +70,9 @@ bc_save_interval: 500
 exp_dir: '/home/zichang/proj/IQ-Learn/iq_learn/encoder/experiments/hopper/'
 encoder: 'model-10.ckpt'
 expert_gen_steps: 1000
+
 cql_coef: 1 # conservative loss weight
 num_random: 5 # conservative randoms
 additional_loss: CQL
+
+num_levels: 2 # number of skill levels, only used for logging purpose

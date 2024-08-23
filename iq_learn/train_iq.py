@@ -58,14 +58,24 @@ def main(cfg: DictConfig):
     args = get_args(cfg)
     if args.wandb:
         if args.cond_type!="none":
-            exp_name = args.env.cond
-            wandb.init(
-                project="hil_iq", 
-                sync_tensorboard=True, 
-                reinit=True, 
-                config=args, 
-                name=f"{args.env.short_name} bc_init{args.method.bc_init} {args.additional_loss} {args.cql_coef}"
-            )
+            if args.method.bc_init:
+                exp_name = args.env.cond
+                wandb.init(
+                    project="hil_iq", 
+                    sync_tensorboard=True, 
+                    reinit=True, 
+                    config=args, 
+                    name=f"{args.env.short_name} bc_init{args.method.bc_init} level{args.num_levels}"
+                )
+            else:
+                exp_name = args.env.cond
+                wandb.init(
+                    project="hil_iq", 
+                    sync_tensorboard=True, 
+                    reinit=True, 
+                    config=args, 
+                    name=f"{args.env.short_name} bc_init{args.method.bc_init} {args.additional_loss} {args.cql_coef}"
+                )
         else: 
             exp_name = args.env.demo
             wandb.init(
@@ -302,7 +312,7 @@ def main(cfg: DictConfig):
                     writer.add_scalar(key, loss, global_step=learn_steps_bc)
                 
                 logger.dump(learn_steps_bc)
-                print (f"Step: {learn_steps_bc}, L2 Norm: {l2_norm.item()}")
+                # print (f"Step: {learn_steps_bc}, L2 Norm: {l2_norm.item()}")
                 if early_stopper.early_stop(-l2_norm.item()):  
                     unique_encoder_file = f"prob-encoder_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_betaB_step_{learn_steps_bc}.ckpt"
                     save_dir = os.path.join(exp_dir, unique_encoder_file)
@@ -376,17 +386,23 @@ def main(cfg: DictConfig):
 
             if learn_steps % args.env.eval_interval == 0:
                 if args.cond_type=="debug":
-                    eval_num = 2
+                    num_levels = args.num_levels
+                    eval_num = 1
                     for eval_index in range(eval_num):
                         # low ability level
-                        eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index)
-                        returns = np.mean(eval_returns)
-                        logger.log(f'eval/episode_reward_low{eval_index}', returns, learn_steps)
-                        # high ability level
-                        high_index = eval_index + args.expert.demos//2
-                        eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=high_index)
-                        returns = np.mean(eval_returns)
-                        logger.log(f'eval/episode_reward_high{high_index}', returns, learn_steps)
+                        for level in range(num_levels):
+                            current_index = eval_index + level*args.expert.demos//num_levels
+                            eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=current_index)
+                            returns = np.mean(eval_returns)
+                            logger.log(f'eval/episode_reward_{current_index}', returns, learn_steps)
+                        # eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index)
+                        # returns = np.mean(eval_returns)
+                        # logger.log(f'eval/episode_reward_low{eval_index}', returns, learn_steps)
+                        # # high ability level
+                        # high_index = eval_index + args.expert.demos//num_levels
+                        # eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=high_index)
+                        # returns = np.mean(eval_returns)
+                        # logger.log(f'eval/episode_reward_high{high_index}', returns, learn_steps)
                 else:
                     eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type)
                     returns = np.mean(eval_returns)

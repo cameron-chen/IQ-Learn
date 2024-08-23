@@ -24,6 +24,7 @@ AGENT=sac
 ENV_LEARN_STEPS=1000000
 BC_ALPHA=0.5
 METHOD_LOSS="v0"
+LEVEL=2
 LAST_STEP=0
 STAGE_1_MODEL=""
 STAGE_2_MODEL=""
@@ -58,6 +59,7 @@ while [[ $# -gt 0 ]]; do
         --STAGE_2_MODEL) STAGE_2_MODEL="$2"; shift 2;;
         --STAGE_1_COND) STAGE_1_COND="$2"; shift 2;;
         --STAGE_2_COND) STAGE_2_COND="$2"; shift 2;;
+        --LEVEL) LEVEL="$2"; shift 2;;
         *) echo "Unknown option: $1"; exit 1;;
     esac
 done
@@ -170,6 +172,7 @@ else
     echo "ENV_LEARN_STEPS: $ENV_LEARN_STEPS" >> "$META_FILE"
     echo "BC_ALPHA: $BC_ALPHA" >> "$META_FILE"
     echo "METHOD_LOSS: $METHOD_LOSS" >> "$META_FILE"
+    echo "LEVEL: $LEVEL" >> "$META_FILE"
     if [ "$LAST_STEP" != "0" ]; then
         echo "" >> "$META_FILE"
         echo "LAST_STEP: $LAST_STEP" >> "$META_FILE"
@@ -316,34 +319,52 @@ if [ $last_step -lt 21 ]; then
     filtered_files=$(ls experts/$SHORT_NAME/ | grep "${ENV_NAME}_10_")
     sorted_files=$(echo "$filtered_files" | sort -t '_' -k3n)
     file_count=$(echo "$sorted_files" | wc -l)
-    if [ $file_count -lt 2 ]; then
-        echo "Error: There are fewer than 2 files in experts/$SHORT_NAME/."
+
+    if [ $file_count -lt $LEVEL ]; then
+        echo "Error: There are fewer than $LEVEL files in experts/$SHORT_NAME/."
         exit 1
     else
-        # Select the first and last files from the sorted list
-        first_file=$(echo "$sorted_files" | head -n 1)
-        last_file=$(echo "$sorted_files" | tail -n 1)
+        if [ $LEVEL -eq 2 ]; then
+            # Select the first and last files from the sorted list
+            first_file=$(echo "$sorted_files" | head -n 1)
+            last_file=$(echo "$sorted_files" | tail -n 1)
 
-        # Combine the file paths with proper formatting
-        first_and_last_files=$(echo -e "$first_file\n$last_file" | awk -v short_name="$SHORT_NAME" 'BEGIN {sep=""} { printf "%s../experts/" short_name "/%s", sep, $0; sep="," }')
+            # Combine the file paths with proper formatting
+            selected_files=$(echo -e "$first_file\n$last_file" | awk -v short_name="$SHORT_NAME" 'BEGIN {sep=""} { printf "%s../experts/" short_name "/%s", sep, $0; sep="," }')
 
-        # Extract the last words from the first and last files
-        first_and_last_words=$(echo -e "$first_file\n$last_file" | awk -F'_' '{gsub(/\..+$/, "", $NF); print $NF}')
+            # Extract the last words from the first and last files
+            selected_words=$(echo -e "$first_file\n$last_file" | awk -F'_' '{gsub(/\..+$/, "", $NF); print $NF}')
 
-        # Combine the last words with '+'
-        combined_first_and_last_word=$(echo "$first_and_last_words" | paste -sd '+')
+            # Combine the last words with '+'
+            combined_words=$(echo "$selected_words" | paste -sd '+')
 
-        echo "Combining 2 skill levels: $first_and_last_files"
-        echo "Combined last word: $combined_first_and_last_word"
+            echo "Combining $LEVEL skill levels: $selected_files"
+        elif [ $LEVEL -eq 3 ]; then
+            # Select the first, second, and last files from the sorted list
+            first_file=$(echo "$sorted_files" | head -n 1)
+            second_file=$(echo "$sorted_files" | sed -n '2p')
+            last_file=$(echo "$sorted_files" | tail -n 1)
+
+            # Combine the file paths with proper formatting
+            selected_files=$(echo -e "$first_file\n$second_file\n$last_file" | awk -v short_name="$SHORT_NAME" 'BEGIN {sep=""} { printf "%s../experts/" short_name "/%s", sep, $0; sep="," }')
+
+            # Extract the last words from the first, second, and last files
+            selected_words=$(echo -e "$first_file\n$second_file\n$last_file" | awk -F'_' '{gsub(/\..+$/, "", $NF); print $NF}')
+
+            # Combine the last words with '+'
+            combined_words=$(echo "$selected_words" | paste -sd '+')
+
+            echo "Combining 3 skill levels: $selected_files"
+        fi
     fi
-    traj_name=${ENV_NAME}_20_${combined_first_and_last_word}
+
+    traj_name=${ENV_NAME}_${LEVEL}0_${combined_words}
 
     cd $HOME_DIR/utils
-    python combine_data.py $first_and_last_files 10 ../experts/$SHORT_NAME/${traj_name}.pkl &
+    python combine_data.py $selected_files 10 ../experts/$SHORT_NAME/${traj_name}.pkl &
     wait
-    echo "Combined 2 skill levels to experts/$SHORT_NAME/$traj_name.pkl"
+    echo "Combined $LEVEL skill levels to experts/$SHORT_NAME/$traj_name.pkl"
 
-    
     cd $HOME_DIR/encoder
     python embed_hil.py $traj_name ../experts/$SHORT_NAME/${traj_name}.pkl -b env=\"$SHORT_NAME\" -b checkpoint=\"experiments/$SHORT_NAME/$EXP_ID/$stage1_model\" --embed_mode=det --exp_id=$EXP_ID &
     wait
@@ -355,6 +376,7 @@ if [ $last_step -lt 21 ]; then
         echo "Step 2.1 failed"
         exit 1
     fi
+
 fi
 
 ## 2.2. Probabilistic encoder training
@@ -371,10 +393,10 @@ if [ $last_step -lt 22 ]; then
         echo "Model file found: $stage1_model"
     fi
 
-    demo=$(ls experts/$SHORT_NAME/ | grep "${ENV_NAME}_20_" | head -n 1)
-    cond=$(ls cond/$SHORT_NAME/$EXP_ID/ | grep "${ENV_NAME}_20_" | head -n 1)
+    demo=$(ls experts/$SHORT_NAME/ | grep "${ENV_NAME}_${LEVEL}0_" | head -n 1)
+    cond=$(ls cond/$SHORT_NAME/$EXP_ID/ | grep "${ENV_NAME}_${LEVEL}0_" | head -n 1)
     echo "Training started with 20 expert trajs: $demo and initial condition: $cond"
-    python train_iq.py bc_steps=$BC_STEPS bc_save_interval=$BC_SAVE_INTERVAL cond_dim=$COND_DIM method.kld_alpha=$KLD_ALPHA agent.actor_lr=$AGENT_ACTOR_LR agent.init_temp=$AGENT_INIT_TEMP seed=$SEED wandb=True env=$SHORT_NAME agent=$AGENT expert.demos=20 env.learn_steps=$ENV_LEARN_STEPS method.enable_bc_actor_update=False method.bc_init=True method.bc_alpha=$BC_ALPHA env.eval_interval=1e4 cond_type=debug env.demo=$SHORT_NAME/$demo env.cond=$SHORT_NAME/$EXP_ID/$cond method.loss=$METHOD_LOSS method.regularize=True exp_dir=$HOME_DIR/encoder/experiments/$SHORT_NAME/$EXP_ID/ encoder=$stage1_model &
+    python train_iq.py bc_steps=$BC_STEPS bc_save_interval=$BC_SAVE_INTERVAL cond_dim=$COND_DIM method.kld_alpha=$KLD_ALPHA agent.actor_lr=$AGENT_ACTOR_LR agent.init_temp=$AGENT_INIT_TEMP seed=$SEED wandb=True env=$SHORT_NAME agent=$AGENT expert.demos=${LEVEL}0 env.learn_steps=$ENV_LEARN_STEPS method.enable_bc_actor_update=False method.bc_init=True method.bc_alpha=$BC_ALPHA env.eval_interval=1e4 cond_type=debug env.demo=$SHORT_NAME/$demo env.cond=$SHORT_NAME/$EXP_ID/$cond method.loss=$METHOD_LOSS method.regularize=True exp_dir=$HOME_DIR/encoder/experiments/$SHORT_NAME/$EXP_ID/ encoder=$stage1_model num_levels=$LEVEL &
     wait
     if [ $? -eq 0 ]; then
         echo -e "22" >> $TRACKING_FILE
@@ -396,24 +418,36 @@ if [ $last_step -lt 23 ]; then
         echo "Probabilistic encoder found: $prob_encoder"
     fi
 
-    # pick the expert files with lowest and highest skill level
+    # Pick the expert files based on the skill level
     cd $HOME_DIR
     filtered_files=$(ls experts/$SHORT_NAME/ | grep "${ENV_NAME}_10_")
     sorted_files=$(echo "$filtered_files" | sort -t '_' -k3n)
     file_count=$(echo "$sorted_files" | wc -l)
-    if [ $file_count -lt 2 ]; then
-        echo "Error: There are fewer than 2 files in experts/$SHORT_NAME/."
+
+    if [ $file_count -lt $LEVEL ]; then
+        echo "Error: There are fewer than $LEVEL files in experts/$SHORT_NAME/."
         exit 1
     else
-        first_file=$(echo "$sorted_files" | head -n 1)
-        last_file=$(echo "$sorted_files" | tail -n 1)
-        selected_files=$(printf "../experts/%s/%s,../experts/%s/%s" "$SHORT_NAME" "$first_file" "$SHORT_NAME" "$last_file")
-        echo "Evaluation of mean as embeddings started with 2 expert files: $selected_files"
+        if [ $LEVEL -eq 2 ]; then
+            # Select the first and last files (low and high skill levels)
+            first_file=$(echo "$sorted_files" | head -n 1)
+            last_file=$(echo "$sorted_files" | tail -n 1)
+            selected_files=$(printf "../experts/%s/%s,../experts/%s/%s" "$SHORT_NAME" "$first_file" "$SHORT_NAME" "$last_file")
+            echo "Evaluation of mean as embeddings started with 2 expert files: $selected_files"
+        elif [ $LEVEL -eq 3 ]; then
+            # Select three files (low, medium, and high skill levels)
+            first_file=$(echo "$sorted_files" | head -n 1)
+            mid_file=$(echo "$sorted_files" | sed -n '2p')
+            last_file=$(echo "$sorted_files" | tail -n 1)
+            selected_files=$(printf "../experts/%s/%s,../experts/%s/%s,../experts/%s/%s" "$SHORT_NAME" "$first_file" "$SHORT_NAME" "$mid_file" "$SHORT_NAME" "$last_file")
+            echo "Evaluation of mean as embeddings started with 3 expert files: $selected_files"
+        fi
     fi
+
 
     cd $HOME_DIR/encoder
     prob_encoder_purename=$(basename "$prob_encoder" .ckpt)
-    python embed_hil.py test_meanAsEmb_$prob_encoder_purename $selected_files -b env=\"$SHORT_NAME\" -b checkpoint=\"$prob_encoder\" --embed_mode=mean --n_features=2 --exp_id=$EXP_ID &
+    python embed_hil.py test_meanAsEmb_$prob_encoder_purename $selected_files -b env=\"$SHORT_NAME\" -b checkpoint=\"$prob_encoder\" --embed_mode=mean --n_features=$LEVEL --exp_id=$EXP_ID &
     wait
     if [ $? -eq 0 ]; then
         echo -e "23" >> $TRACKING_FILE
@@ -437,11 +471,11 @@ echo \
 if [ $last_step -lt 31 ]; then
     echo "Step 3.1. Condition generation"
     cd $HOME_DIR/encoder
-    demo=$(find "../experts/$SHORT_NAME/" -type f -name "${ENV_NAME}_20_*" | head -n 1)
+    demo=$(find "../experts/$SHORT_NAME/" -type f -name "${ENV_NAME}_${LEVEL}0_*" | head -n 1)
     demo_purename=$(basename "$demo" .pkl)
     prob_encoder=$(find "experiments/$SHORT_NAME/$EXP_ID/" -type f -name "*prob-encoder*" | sort -t_ -k7n | tail -n 1)
     if [ -z "$demo" ]; then
-        echo "Error: No file containing '20' found in directory experts/$SHORT_NAME/."
+        echo "Error: No file containing '${LEVEL}0' found in directory experts/$SHORT_NAME/."
         exit 1
     else
         echo "Demo found: $demo"
@@ -470,7 +504,7 @@ fi
 if [ $last_step -lt 32 ]; then
     echo "Step 3.2. Decoder training"
     cd $HOME_DIR
-    demo=$(ls experts/$SHORT_NAME/ | grep "${ENV_NAME}_20_" | head -n 1)
+    demo=$(ls experts/$SHORT_NAME/ | grep "${ENV_NAME}_${LEVEL}0_" | head -n 1)
     demo_name=$(basename "$demo" .pkl)
     prob_encoder=$(find "encoder/experiments/$SHORT_NAME/$EXP_ID/" -type f -name "*prob-encoder*" | sort -t_ -k7n | tail -n 1)
     prob_encoder=$(basename "$prob_encoder")
@@ -483,7 +517,7 @@ if [ $last_step -lt 32 ]; then
         echo -e "Cond found: $cond.\nDecoder training will start soon."
     fi
 
-    python train_iq.py env.learn_steps=$ENV_LEARN_STEPS cond_dim=$COND_DIM method.kld_alpha=$KLD_ALPHA agent.actor_lr=$AGENT_ACTOR_LR agent.init_temp=$AGENT_INIT_TEMP seed=$SEED wandb=True env=$SHORT_NAME agent=$AGENT expert.demos=20 method.enable_bc_actor_update=False method.bc_init=False method.bc_alpha=$BC_ALPHA env.eval_interval=1e4 cond_type=debug env.demo=$SHORT_NAME/$demo env.cond=$SHORT_NAME/$EXP_ID/$cond method.loss=$METHOD_LOSS method.regularize=True exp_dir=$HOME_DIR/encoder/experiments/$SHORT_NAME/$EXP_ID/ encoder=$prob_encoder &
+    python train_iq.py env.learn_steps=$ENV_LEARN_STEPS cond_dim=$COND_DIM method.kld_alpha=$KLD_ALPHA agent.actor_lr=$AGENT_ACTOR_LR agent.init_temp=$AGENT_INIT_TEMP seed=$SEED wandb=True env=$SHORT_NAME agent=$AGENT expert.demos=${LEVEL}0 method.enable_bc_actor_update=False method.bc_init=False method.bc_alpha=$BC_ALPHA env.eval_interval=1e4 cond_type=debug env.demo=$SHORT_NAME/$demo env.cond=$SHORT_NAME/$EXP_ID/$cond method.loss=$METHOD_LOSS method.regularize=True exp_dir=$HOME_DIR/encoder/experiments/$SHORT_NAME/$EXP_ID/ encoder=$prob_encoder num_levels=$LEVEL &
     python_pid=$!
 
     # Echo the PID of the Python process
