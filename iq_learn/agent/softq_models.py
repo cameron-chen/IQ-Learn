@@ -110,13 +110,29 @@ class OfflineQNetwork(SoftQNetwork):
 
 class CondOfflineQNetwork(OfflineQNetwork):
     def __init__(self, obs_dim, action_dim, cond_dim, args, device='cpu'):
-        super().__init__(obs_dim+cond_dim, action_dim, args, device)
+        if cond_dim>0:
+            # cond version
+            # print('--> Using Conditional Version CondDiagGaussianActor')
+            self.v_cond = True
+            super().__init__(obs_dim+cond_dim, action_dim, args, device)
+            self.cond_layer = nn.Linear(cond_dim, obs_dim)
+        else:
+            self.v_cond = False
+            super().__init__(obs_dim, action_dim, args, device)
+
 
     def _forward(self, x, *args):
-        if isinstance(x, list) or isinstance(x, tuple):
-            obs, cond = x
-        x = torch.cat([obs,cond],dim=-1)
-        return super()._forward(x)
+        obs, cond = x
+        # obs = obs + self.cond_layer(cond)
+        if self.v_cond:
+            obs = torch.cat([obs, cond], dim=-1)
+
+        return super()._forward(obs)
+
+        # if isinstance(x, list) or isinstance(x, tuple):
+        #     obs, cond = x
+        # x = torch.cat([obs,cond],dim=-1)
+        # return super()._forward(x)
 
 class DoubleQNetwork(SoftQNetwork):
     def __init__(self, obs_dim, action_dim, args, device='cpu'):

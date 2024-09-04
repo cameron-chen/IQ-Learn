@@ -6,7 +6,7 @@ import torch
 class BehaviorCloningLossCalculator:
     """Functor to compute the loss used in Behavior Cloning."""
 
-    def __init__(self, ent_weight: float, l2_weight: float, kld_weight: float) -> None:
+    def __init__(self, ent_weight: float, l2_weight: float, kld_weight: float, agent_name: str) -> None:
         self.ent_weight = ent_weight
         self.l2_weight = l2_weight
         self.kld_weight = kld_weight
@@ -16,6 +16,7 @@ class BehaviorCloningLossCalculator:
         self.C_max = torch.Tensor([25])
         self.C_stop_iter = 1e5
         self.num_iter = 0
+        self.agent_name = agent_name
 
     def pure_bc(
         self,
@@ -84,25 +85,39 @@ class BehaviorCloningLossCalculator:
         """
         if mu is None or log_var is None:
             return self.pure_bc(agent, obs, acts)
-        (_, log_prob, entropy) = agent.evaluate_actions(
-            obs,  # type: ignore[arg-type]
-            acts,
-        )
-        prob_true_act = torch.exp(log_prob).mean()
-        log_prob = log_prob.mean()
-        entropy = entropy.mean() if entropy is not None else None
+        if self.agent_name == "sac":
+            (_, log_prob, entropy) = agent.evaluate_actions(
+                obs,  # type: ignore[arg-type]
+                acts,
+            )
+            prob_true_act = torch.exp(log_prob).mean()
+            log_prob = log_prob.mean()
+            entropy = entropy.mean() if entropy is not None else None
 
-        l2_norms = [torch.sum(torch.square(w)) for w in agent.actor.parameters()]
-        l2_norm = sum(l2_norms) / 2  # divide by 2 to cancel with gradient of square
-        # sum of list defaults to float(0) if len == 0.
-        assert isinstance(l2_norm, torch.Tensor)
+            l2_norms = [torch.sum(torch.square(w)) for w in agent.actor.parameters()]
+            l2_norm = sum(l2_norms) / 2  # divide by 2 to cancel with gradient of square
+            # sum of list defaults to float(0) if len == 0.
+            assert isinstance(l2_norm, torch.Tensor)
 
-        ent_loss = -self.ent_weight * (
-            entropy if entropy is not None else torch.zeros(1)
-        )
-        neglogp = -log_prob
-        l2_loss = self.l2_weight * l2_norm
-        bc_loss = neglogp + ent_loss + l2_loss
+            ent_loss = -self.ent_weight * (
+                entropy if entropy is not None else torch.zeros(1)
+            )
+            neglogp = -log_prob
+            l2_loss = self.l2_weight * l2_norm
+            bc_loss = neglogp + ent_loss + l2_loss
+        else: # softq version
+            q_values = agent.infer_q(obs, acts)  # Replace with your method to get Q-values
+
+            # Compute behavior cloning loss based on Q-values
+            q_loss = -q_values.mean()  # Example: negative mean Q-value
+
+            # Optionally add regularization
+            l2_norms = [torch.sum(torch.square(w)) for w in agent.q_function.parameters()]
+            l2_norm = sum(l2_norms) / 2
+            l2_loss = self.l2_weight * l2_norm
+
+            # Total loss
+            bc_loss = q_loss + l2_loss
         result = self.vae_loss_function(bc_loss, mu, log_var) # VAE loss
         # result = self.betaVAE_loss_function(bc_loss, mu, log_var) # beta-VAE loss
         kld_loss = result['KLD_loss']

@@ -45,7 +45,7 @@ def main(cfg: DictConfig):
         print(f"Env short name : {args.env.short_name}")
         print(f"Env name : {args.env.name}")
         print("--> Training model, please expect a long training time")
-        three_level = False
+        three_level = True
         if three_level:
             for i in range(TOTAL_EPOCHS):
                 agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS, log_interval=10)
@@ -120,6 +120,8 @@ def main(cfg: DictConfig):
         episode_infos = None
         for time_steps in range(EPS_STEPS):
             action, _states = agent.predict(state)
+            if action.any() > 1 or action.any() < -1:
+                print(f'Action out of bounds{action}')
             # action, _states = agent.predict(state, deterministic=True)
             # action = agent.choose_action(state)
             next_state, reward, done, info = env.step(action)

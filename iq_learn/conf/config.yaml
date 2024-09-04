@@ -73,6 +73,10 @@ expert_gen_steps: 1000
 
 cql_coef: 1 # conservative loss weight
 num_random: 5 # conservative randoms
-additional_loss: CQL
+additional_loss: none # none, CQL, currentQ or combined
 
 num_levels: 2 # number of skill levels, only used for logging purpose
+
+experimental: none # If true, add evaluation of avg condition between two levels
+
+save_last: False # Save the last model

@@ -58,7 +58,16 @@ def main(cfg: DictConfig):
     args = get_args(cfg)
     if args.wandb:
         if args.cond_type!="none":
-            if args.method.bc_init:
+            if args.experimental != "none":
+                exp_name = args.env.cond
+                wandb.init(
+                    project="hil_iq", 
+                    sync_tensorboard=True, 
+                    reinit=True, 
+                    config=args, 
+                    name=f"{args.env.short_name} experimental {args.experimental}"
+                )
+            elif args.method.bc_init:
                 exp_name = args.env.cond
                 wandb.init(
                     project="hil_iq", 
@@ -74,7 +83,7 @@ def main(cfg: DictConfig):
                     sync_tensorboard=True, 
                     reinit=True, 
                     config=args, 
-                    name=f"{args.env.short_name} bc_init{args.method.bc_init} {args.additional_loss} {args.cql_coef}"
+                    name=f"{args.env.short_name} bc_init{args.method.bc_init} level{args.num_levels} {args.additional_loss} {args.cql_coef}"
                 )
         else: 
             exp_name = args.env.demo
@@ -170,11 +179,22 @@ def main(cfg: DictConfig):
     # print work dir
     # change work dir to encoder dir
     # os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
-    agent.loss_calculator = BehaviorCloningLossCalculator(
-            ent_weight=1e-3,  # args.method.bc_ent_weight,
-            l2_weight=0.0,  # args.method.bc_l2_weight,
-            kld_weight=args.method.kld_alpha,  # args.method.bc_kld_weight,
-        )
+    # if sac
+    if args.agent.name == "sac":
+        agent.loss_calculator = BehaviorCloningLossCalculator(
+                ent_weight=1e-3,  # args.method.bc_ent_weight,
+                l2_weight=0.0,  # args.method.bc_l2_weight,
+                kld_weight=args.method.kld_alpha,  # args.method.bc_kld_weight,
+                agent_name=args.agent.name
+            )
+    else: 
+        # TODO: add bc loss calculator for softq
+        agent.loss_calculator = BehaviorCloningLossCalculator(
+                ent_weight=1e-3,  # args.method.bc_ent_weight,
+                l2_weight=0.0,  # args.method.bc_l2_weight,
+                kld_weight=args.method.kld_alpha,  # args.method.bc_kld_weight,
+                agent_name=args.agent.name
+            )
     agent.bc_alpha = args.method.bc_alpha
     if args.method.bc_init:
         sys.path.append('/home/zichang/proj/IQ-Learn/iq_learn/encoder')
@@ -249,11 +269,6 @@ def main(cfg: DictConfig):
     # BC initialization
     if args.method.bc_init:
         agent.bc_update = types.MethodType(bc_update, agent)
-        # cond_read_file = hydra.utils.to_absolute_path(f'cond/{args.env.cond}')
-        # if os.path.isfile(cond_read_file):
-        #     # Load data from single file.
-        #     with open(cond_read_file, 'rb') as f:
-        #         emb_list = read_file(cond_read_file, f)
         logit_m = conds["logit_m"]
         logit_array_0, m_array_0 = logit_m[0]
         first_mu_0 = get_mu_logvar(logit_array_0, m_array_0, encoder, device)[1].detach().cpu().numpy()
@@ -323,15 +338,15 @@ def main(cfg: DictConfig):
 
             # eval every n steps
             if learn_steps_bc % 100 == 0:  # args.env.eval_interval == 0:
-                eval_num = 0 # TODO: change to 2 for training
+                eval_num = 0 
                 for eval_index in range(eval_num):
                     # low ability level
-                    eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index)
+                    eval_returns, eval_timesteps = evaluate(agent, eval_env, conds, num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index, experimental="none")
                     returns = np.mean(eval_returns)
                     logger.log(f'eval/episode_reward_low{eval_index}', returns, learn_steps)
                     # high ability level
                     high_index = eval_index + args.expert.demos//2
-                    eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=high_index)
+                    eval_returns, eval_timesteps = evaluate(agent, eval_env, conds, num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=high_index, experimental="none")
                     returns = np.mean(eval_returns)
                     logger.log(f'eval/episode_reward_high{high_index}', returns, learn_steps)
                 # logger.log('eval/bc_episode_reward', returns, learn_steps_bc)
@@ -392,7 +407,7 @@ def main(cfg: DictConfig):
                         # low ability level
                         for level in range(num_levels):
                             current_index = eval_index + level*args.expert.demos//num_levels
-                            eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=current_index)
+                            eval_returns, eval_timesteps = evaluate(agent, eval_env, conds, num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=current_index, experimental="none")
                             returns = np.mean(eval_returns)
                             logger.log(f'eval/episode_reward_{current_index}', returns, learn_steps)
                         # eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index)
@@ -403,8 +418,13 @@ def main(cfg: DictConfig):
                         # eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=high_index)
                         # returns = np.mean(eval_returns)
                         # logger.log(f'eval/episode_reward_high{high_index}', returns, learn_steps)
+                    if args.experimental != "none":
+                        eval_index = 10
+                        eval_returns, eval_timesteps = evaluate(agent, eval_env, conds, num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index, experimental=args.experimental)
+                        returns = np.mean(eval_returns)
+                        logger.log(f'eval/episode_reward_{args.experimental}{eval_index}', returns, learn_steps)
                 else:
-                    eval_returns, eval_timesteps = evaluate(agent, eval_env, hydra.utils.to_absolute_path(f'cond/{args.env.cond}'), num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type)
+                    eval_returns, eval_timesteps = evaluate(agent, eval_env, conds, num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, experimental="none")
                     returns = np.mean(eval_returns)
                     logger.log('eval/episode_reward', returns, learn_steps)
                 learn_steps += 1  # To prevent repeated eval at timestep 0
@@ -463,6 +483,22 @@ def main(cfg: DictConfig):
         logger.dump(learn_steps, save=begin_learn)
         # print('TRAIN\tEp {}\tAverage reward: {:.2f}\t'.format(epoch, np.mean(rewards_window)))
         save(agent, epoch, args, output_dir='results')
+
+    # Save the last model
+    if args.save_last:
+        exp_dir = args.exp_dir
+        result_last_dir = os.path.join(exp_dir, "result_last")
+
+        if not os.path.exists(result_last_dir):
+            os.makedirs(result_last_dir)
+            print(f"Created directory {result_last_dir}")
+        else:
+            print(f"Directory {result_last_dir} already exists")
+
+        save_loc = os.path.join(result_last_dir, "last")
+
+        agent.save(save_loc)
+        print(f"Saved model at {save_loc}")
 def get_mu_logvar(logit_arrays, m_arrays, encoder, device):
     logit_arrays = np.array(logit_arrays)
     m_arrays = np.array(m_arrays)
@@ -689,12 +725,19 @@ def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_type):
 
         # additional_loss = "CQL", "current_Q", "combined_loss", "none"
         additional_loss = args.additional_loss
-        if additional_loss == "CQL":
+        if additional_loss == "CQL_expertAndPolicy":
             fixed_current_Q = 0
             cql_loss_1 = self.cqlV((obs, cond), self.critic.Q1,args.num_random) - fixed_current_Q
             cql_loss_2 = self.cqlV((obs, cond), self.critic.Q2,args.num_random) - fixed_current_Q
             cql_loss = args.cql_coef*(cql_loss_1+cql_loss_2)/2    
-        elif additional_loss == "current_Q":
+        elif additional_loss == "CQL":
+            fixed_current_Q = 0
+            cql_loss_1 = self.cqlV((expert_obs, expert_cond), self.critic.Q1,args.num_random) - fixed_current_Q
+            cql_loss_2 = self.cqlV((expert_obs, expert_cond), self.critic.Q2,args.num_random) - fixed_current_Q
+            cql_loss = args.cql_coef*(cql_loss_1+cql_loss_2)/2    
+        elif additional_loss == "currentQ_expertAndPolicy":
+            cql_loss = args.cql_coef*(-current_Q1.mean()-current_Q2.mean())/2
+        elif additional_loss == "currentQ":
             # Assume policy_batch and expert_batch are tensors or numpy arrays
             # Get the sizes of the policy and expert batches
             policy_batch_size = policy_obs.shape[0]
@@ -707,10 +750,60 @@ def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_type):
             ], dim=0).to(policy_obs.device)
             current_Q1 = current_Q1[~is_expert]
             current_Q2 = current_Q2[~is_expert]
+
             cql_loss = args.cql_coef*(-current_Q1.mean()-current_Q2.mean())/2    
-        elif additional_loss == "combined_loss":  
+        elif additional_loss == "combined_expertAndPolicy":
+            # policy_batch_size = policy_obs.shape[0]
+            # expert_batch_size = expert_obs.shape[0]
+            # # Create is_expert mask: False for policy_batch, True for expert_batch
+            # is_expert = torch.cat([
+            #     torch.zeros(policy_batch_size, dtype=torch.bool), 
+            #     torch.ones(expert_batch_size, dtype=torch.bool)
+            # ], dim=0).to(policy_obs.device)
+            # current_Q1 = current_Q1[~is_expert]
+            # current_Q2 = current_Q2[~is_expert]
+
             cql_loss_1 = self.cqlV((obs, cond), self.critic.Q1,args.num_random) - current_Q1.mean()
             cql_loss_2 = self.cqlV((obs, cond), self.critic.Q2,args.num_random) - current_Q2.mean()
+            cql_loss = args.cql_coef*(cql_loss_1+cql_loss_2)/2    
+        elif additional_loss == "combined":
+            policy_batch_size = policy_obs.shape[0]
+            expert_batch_size = expert_obs.shape[0]
+            # Create is_expert mask: False for policy_batch, True for expert_batch
+            is_expert = torch.cat([
+                torch.zeros(policy_batch_size, dtype=torch.bool), 
+                torch.ones(expert_batch_size, dtype=torch.bool)
+            ], dim=0).to(policy_obs.device)
+            current_Q1 = current_Q1[~is_expert]
+            current_Q2 = current_Q2[~is_expert]
+
+            cql_loss_1 = self.cqlV((expert_obs, expert_cond), self.critic.Q1,args.num_random) - current_Q1.mean()
+            cql_loss_2 = self.cqlV((expert_obs, expert_cond), self.critic.Q2,args.num_random) - current_Q2.mean()
+            cql_loss = args.cql_coef*(cql_loss_1+cql_loss_2)/2    
+        elif additional_loss == "logsumexp_expertAndPolicy":
+            cql_loss_1 = torch.logsumexp(current_Q1, dim=1).mean() * args.cql_coef
+            cql_loss_2 = torch.logsumexp(current_Q2, dim=1).mean() * args.cql_coef
+
+            cql_loss_1 -= current_Q1.mean() * args.cql_coef
+            cql_loss_2 -= current_Q2.mean() * args.cql_coef
+            cql_loss = args.cql_coef*(cql_loss_1+cql_loss_2)/2    
+        elif additional_loss == "logsumexp":
+            policy_batch_size = policy_obs.shape[0]
+            expert_batch_size = expert_obs.shape[0]
+
+            # Create is_expert mask: False for policy_batch, True for expert_batch
+            is_expert = torch.cat([
+                torch.zeros(policy_batch_size, dtype=torch.bool), 
+                torch.ones(expert_batch_size, dtype=torch.bool)
+            ], dim=0).to(policy_obs.device)
+            current_Q1 = current_Q1[~is_expert]
+            current_Q2 = current_Q2[~is_expert]
+            
+            cql_loss_1 = torch.logsumexp(current_Q1, dim=1).mean() * args.cql_coef
+            cql_loss_2 = torch.logsumexp(current_Q2, dim=1).mean() * args.cql_coef
+
+            cql_loss_1 -= current_Q1.mean() * args.cql_coef
+            cql_loss_2 -= current_Q2.mean() * args.cql_coef
             cql_loss = args.cql_coef*(cql_loss_1+cql_loss_2)/2    
         else:
             cql_loss = 0
@@ -728,9 +821,22 @@ def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_type):
         else:
             current_Q = self.critic((obs, action, cond))
         critic_loss, loss_dict = iq_loss(agent, current_Q, current_V, next_V, batch, cond_type)
-        cql_loss = args.cql_coef*(self.cqlV((obs, cond), self.critic.Q,args.num_random) - current_Q.mean())
-        critic_loss += cql_loss
-        loss_dict["cql_loss"] = cql_loss
+
+        additional_loss = args.additional_loss
+        if additional_loss != "none":
+            raise NotImplementedError("Additional loss not implemented for single Q network")
+            policy_batch_size = policy_obs.shape[0]
+            expert_batch_size = expert_obs.shape[0]
+            # Create is_expert mask: False for policy_batch, True for expert_batch
+            is_expert = torch.cat([
+                torch.zeros(policy_batch_size, dtype=torch.bool), 
+                torch.ones(expert_batch_size, dtype=torch.bool)
+            ], dim=0).to(policy_obs.device)
+            current_Q = current_Q[~is_expert]
+
+            cql_loss = args.cql_coef*(self.cqlV((expert_obs, expert_cond), self.critic.Q,args.num_random) - current_Q.mean())
+            critic_loss += cql_loss
+            loss_dict["cql_loss"] = cql_loss
     logger.log('train/critic_loss', critic_loss, step)
 
     # Optimize the critic
@@ -815,7 +921,32 @@ def bc_update(self, observation, action, condition, logger, step, cond_type, mu,
 
     # Q-Learning version
     else:
-        raise NotImplementedError("q learning loop has yet implemented")
+        if cond_type == "none":
+            training_metrics = self.loss_calculator(self, observation, action)
+        else:
+            training_metrics = self.loss_calculator(self, (observation, condition), action, mu, log_var)
+
+        loss = training_metrics["loss/bc_actor"]
+
+        # optimize Q function
+        self.q_optimizer.zero_grad()
+        loss.backward()
+        self.q_optimizer.step()
+
+        # Optionally update target Q networks if using target networks
+        if self.use_target_networks:
+            self.update_target_networks()
+
+        # log
+        for key, loss in training_metrics.items():
+            if "bc_" in key.split("/")[1]:
+                _key = f"train/{key.split('/')[1]}"
+            else:
+                _key = f"train/bc_{key.split('/')[1]}"
+            logger.log(_key, loss, step)
+
+    # else:
+    #     raise NotImplementedError("q learning loop has yet implemented")
 
     # if step % self.critic_target_update_frequency == 0:
     #     if self.args.train.soft_update:

@@ -72,6 +72,33 @@ def main():
     with open(expert_location, 'rb') as f:
         trajs = read_file(expert_location, f)
 
+#%% --> Compute distance between embeddings
+    # from scipy.stats import wasserstein_distance
+    # import numpy as np
+
+    # # Assume trajs["emb"] is a numpy array with shape (30, 10), where the first 10 rows are for skill level 1,
+    # # the next 10 rows are for skill level 2, and the last 10 rows are for skill level 3.
+
+    # # Split the embeddings based on skill levels
+    # skill_level_1 = trajs["emb"][:10]  # First 10 embeddings
+    # skill_level_2 = trajs["emb"][10:20]  # Next 10 embeddings
+    # skill_level_3 = trajs["emb"][20:30]  # Last 10 embeddings
+
+    # # Compute the Wasserstein distance between the distributions of different skill levels
+    # dist_1_2 = [wasserstein_distance(skill_level_1[:, i], skill_level_2[:, i]) for i in range(skill_level_1.shape[1])]
+    # dist_1_3 = [wasserstein_distance(skill_level_1[:, i], skill_level_3[:, i]) for i in range(skill_level_1.shape[1])]
+    # dist_2_3 = [wasserstein_distance(skill_level_2[:, i], skill_level_3[:, i]) for i in range(skill_level_1.shape[1])]
+
+    # # Average the distances across all dimensions
+    # average_dist_1_2 = np.mean(dist_1_2)
+    # average_dist_1_3 = np.mean(dist_1_3)
+    # average_dist_2_3 = np.mean(dist_2_3)
+
+    # print("Wasserstein Distance between skill level 1 and 2:", average_dist_1_2)
+    # print("Wasserstein Distance between skill level 1 and 3:", average_dist_1_3)
+    # print("Wasserstein Distance between skill level 2 and 3:", average_dist_2_3)
+
+
 # with open('experts/CartPole-v1_1000.pkl', 'rb') as f:
 #     data = pickle.load(f)
 #%% --> Demos
@@ -81,13 +108,13 @@ def main():
     
     emb = trajs["emb"]
     new_emb = []
-    for i in range(0, len(emb), 2):
-        new_emb.append(emb[i])
-    print('new len:', len(new_emb))
-    trajs["emb"] = new_emb
-    save_file = 'cond/test_hopperEmb_tripple_dim10_kld1.pkl'
-    with open(save_file, 'wb') as f:
-        pickle.dump(trajs, f)
+    # for i in range(0, len(emb), 2):
+    #     new_emb.append(emb[i])
+    # print('new len:', len(new_emb))
+    # trajs["emb"] = new_emb
+    # save_file = 'cond/test_hopperEmb_tripple_dim10_kld1.pkl'
+    # with open(save_file, 'wb') as f:
+    #     pickle.dump(trajs, f)
     # emb_sample = emb[0]
     # print('emb sample',emb_sample)
 

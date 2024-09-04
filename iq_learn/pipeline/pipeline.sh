@@ -25,11 +25,17 @@ ENV_LEARN_STEPS=1000000
 BC_ALPHA=0.5
 METHOD_LOSS="v0"
 LEVEL=2
+ADDITIONAL_LOSS=none
+CQL_COEF=1
+NUM_RANDOM=5
+SAVE_LAST=False
 LAST_STEP=0
 STAGE_1_MODEL=""
 STAGE_2_MODEL=""
 STAGE_1_COND=""
 STAGE_2_COND=""
+
+
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -53,17 +59,20 @@ while [[ $# -gt 0 ]]; do
         --ENV_LEARN_STEPS) ENV_LEARN_STEPS="$2"; shift 2;;
         --BC_ALPHA) BC_ALPHA="$2"; shift 2;;
         --METHOD_LOSS) METHOD_LOSS="$2"; shift 2;;
+        --LEVEL) LEVEL="$2"; shift 2;;
+        --ADDITIONAL_LOSS) ADDITIONAL_LOSS="$2"; shift 2;;
+        --CQL_COEF) CQL_COEF="$2"; shift 2;;
+        --NUM_RANDOM) NUM_RANDOM="$2"; shift 2;;
+        --SAVE_LAST) SAVE_LAST="$2"; shift 2;;
         --EXP_ID) EXP_ID="$2"; shift 2;;
         --LAST_STEP) LAST_STEP="$2"; shift 2;;
         --STAGE_1_MODEL) STAGE_1_MODEL="$2"; shift 2;;
         --STAGE_2_MODEL) STAGE_2_MODEL="$2"; shift 2;;
         --STAGE_1_COND) STAGE_1_COND="$2"; shift 2;;
         --STAGE_2_COND) STAGE_2_COND="$2"; shift 2;;
-        --LEVEL) LEVEL="$2"; shift 2;;
         *) echo "Unknown option: $1"; exit 1;;
     esac
 done
-
 ## 0.3. resuming
 #   - write a record when one step is finished
 #   - if the script is interrupted, check the record and resume from the last step
@@ -173,6 +182,10 @@ else
     echo "BC_ALPHA: $BC_ALPHA" >> "$META_FILE"
     echo "METHOD_LOSS: $METHOD_LOSS" >> "$META_FILE"
     echo "LEVEL: $LEVEL" >> "$META_FILE"
+    echo "ADDITIONAL_LOSS: $ADDITIONAL_LOSS" >> "$META_FILE"
+    echo "CQL_COEF: $CQL_COEF" >> "$META_FILE"
+    echo "NUM_RANDOM: $NUM_RANDOM" >> "$META_FILE"
+    echo "SAVE_LAST: $SAVE_LAST" >> "$META_FILE"
     if [ "$LAST_STEP" != "0" ]; then
         echo "" >> "$META_FILE"
         echo "LAST_STEP: $LAST_STEP" >> "$META_FILE"
@@ -183,7 +196,6 @@ else
         echo "Borrowed Experiment ID: $OLD_ID" >> "$META_FILE"
     fi
 fi
-
 
 # Echo names directly
 echo "SHORT_NAME: $SHORT_NAME"
@@ -378,7 +390,6 @@ if [ $last_step -lt 21 ]; then
     fi
 
 fi
-
 ## 2.2. Probabilistic encoder training
 #   - load 20 trajs to encoder
 if [ $last_step -lt 22 ]; then
@@ -517,7 +528,7 @@ if [ $last_step -lt 32 ]; then
         echo -e "Cond found: $cond.\nDecoder training will start soon."
     fi
 
-    python train_iq.py env.learn_steps=$ENV_LEARN_STEPS cond_dim=$COND_DIM method.kld_alpha=$KLD_ALPHA agent.actor_lr=$AGENT_ACTOR_LR agent.init_temp=$AGENT_INIT_TEMP seed=$SEED wandb=True env=$SHORT_NAME agent=$AGENT expert.demos=${LEVEL}0 method.enable_bc_actor_update=False method.bc_init=False method.bc_alpha=$BC_ALPHA env.eval_interval=1e4 cond_type=debug env.demo=$SHORT_NAME/$demo env.cond=$SHORT_NAME/$EXP_ID/$cond method.loss=$METHOD_LOSS method.regularize=True exp_dir=$HOME_DIR/encoder/experiments/$SHORT_NAME/$EXP_ID/ encoder=$prob_encoder num_levels=$LEVEL &
+    python train_iq.py additional_loss=$ADDITIONAL_LOSS cql_coef=$CQL_COEF num_random=$NUM_RANDOM env.learn_steps=$ENV_LEARN_STEPS cond_dim=$COND_DIM method.kld_alpha=$KLD_ALPHA agent.actor_lr=$AGENT_ACTOR_LR agent.init_temp=$AGENT_INIT_TEMP seed=$SEED wandb=True env=$SHORT_NAME agent=$AGENT expert.demos=${LEVEL}0 method.enable_bc_actor_update=False method.bc_init=False method.bc_alpha=$BC_ALPHA env.eval_interval=1e4 cond_type=debug env.demo=$SHORT_NAME/$demo env.cond=$SHORT_NAME/$EXP_ID/$cond method.loss=$METHOD_LOSS method.regularize=True exp_dir=$HOME_DIR/encoder/experiments/$SHORT_NAME/$EXP_ID/ encoder=$prob_encoder num_levels=$LEVEL save_last=$SAVE_LAST &
     python_pid=$!
 
     # Echo the PID of the Python process

@@ -27,7 +27,7 @@ class eval_mode(object):
         return False
 
 
-def evaluate(actor, env, cond_location, num_episodes=10, vis=True, cond_dim=10, cond_type="random", eval_index=0):
+def evaluate(actor, env, conditions, num_episodes=10, vis=True, cond_dim=10, cond_type="random", eval_index=0, experimental="none"):
     """Evaluates the policy.
     Args:
       actor: A policy to evaluate.
@@ -43,11 +43,7 @@ def evaluate(actor, env, cond_location, num_episodes=10, vis=True, cond_dim=10, 
         state = env.reset()
         done = False
         terminated = False
-        # cond = [-1]*cond_dim
-        # TODO: add conds for online memory replay
-        # TODO: (changyu) we may want to use a fixed cond for evaluation
-        # cond = get_random_cond(cond_dim, cond_type)
-        cond = get_random_cond(cond_dim, cond_type, cond_location, eval_index=eval_index)
+        cond = get_random_cond(cond_dim, cond_type, conditions, eval_index=eval_index, experimental=experimental)
         with eval_mode(actor):
             while not done and not terminated:
                 if cond_type=="none":
@@ -63,15 +59,35 @@ def evaluate(actor, env, cond_location, num_episodes=10, vis=True, cond_dim=10, 
 
     return total_returns, total_timesteps
 
-def get_random_cond(cond_dim, cond_type, cond_location, eval_index=0):
-    if os.path.isfile(cond_location):
-        # Load data from single file.
-        with open(cond_location, 'rb') as f:
-            conds = read_file(cond_location, f)
-    conds = conds["emb"]
+def get_random_cond(cond_dim, cond_type, conditions, eval_index=0, experimental="none"):
+    conds = conditions["emb"]
     # select random index from conds length
     index = random.randint(0, len(conds)-1)
-    if cond_type=="random":
+    if "weighted" in experimental:
+        if experimental=="weighted":
+            alpha = 0.5
+        else:
+            # Extract the alpha value from the experimental string
+            alpha_str = experimental.replace("weighted", "")
+            try:
+                alpha = float(alpha_str)  # Convert the string to a float
+            except ValueError:
+                raise ValueError(f"Invalid alpha value extracted: '{alpha_str}'")
+
+        # Ensure alpha is within the valid range [0, 1]
+        if not (0 <= alpha <= 1):
+            raise ValueError(f"Alpha value must be between 0 and 1. Got: {alpha}")
+
+        # Calculate the average of the current condition and the condition with index+10
+        cond_first = conds[eval_index][:cond_dim]
+        cond_second = conds[(eval_index+20) % len(conds)][:cond_dim]
+        cond = alpha * cond_first + (1 - alpha) * cond_second
+
+    elif experimental=="noise":
+        # modify one dim of the condition
+        cond = conds[eval_index][:cond_dim]
+        cond[random.randint(0,cond_dim-1)] = 0
+    elif cond_type=="random":
         cond = conds[index][:cond_dim]
     elif cond_type=="debug":
         cond = conds[eval_index][:cond_dim]
