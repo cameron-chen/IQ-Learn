@@ -494,8 +494,9 @@ def main(cfg: DictConfig):
             print(f"Created directory {result_last_dir}")
         else:
             print(f"Directory {result_last_dir} already exists")
-
-        save_loc = os.path.join(result_last_dir, "last")
+        # name the loc with timestamp
+        ts_str = datetime.datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d_%H-%M-%S")
+        save_loc = os.path.join(result_last_dir, f"{ts_str}")
 
         agent.save(save_loc)
         print(f"Saved model at {save_loc}")
