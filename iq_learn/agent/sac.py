@@ -162,7 +162,7 @@ class SAC(object):
             if act_demo is not None:
                 act_len = act_demo.shape[0]
                 obs_demo, cond_demo = _obs[-act_len:], cond[-act_len:]
-                bc_metrics = self.loss_calculator(self, (obs_demo, cond_demo), act_demo, None, None)
+                bc_metrics = self.loss_calculator.pure_bc(self, (obs_demo, cond_demo), act_demo)
             else: 
                 bc_metrics = None
         else:
@@ -170,7 +170,7 @@ class SAC(object):
             if act_demo is not None:
                 act_len = act_demo.shape[0]
                 obs_demo = obs[-act_len:]
-                bc_metrics = self.loss_calculator(self, obs_demo, act_demo, None, None)
+                bc_metrics = self.loss_calculator.pure_bc(self, obs_demo, act_demo)
             else: 
                 bc_metrics = None
 
@@ -253,19 +253,19 @@ class SAC(object):
         
         if torch.isnan(log_prob).any():
             print('!!!!!!!!!!!!!!! log_prob is nan')
-            print("Action: ",action)
-            print("Dist:", dist)
+            assert (dist.scale > 0).all(), "Scale must be positive"
+            # print("Distribution parameters:", dist.mean, dist.scale)
             print("Distribution parameters:")
             for param_name, param_value in dist.__dict__.items():
-                print(f"{param_name}: {param_value}")
+                # print(f"{param_name}: {param_value}")
                 if isinstance(param_value, torch.Tensor):
                     # Check if param_value tensor contains NaN values
                     if torch.isnan(param_value).any():
                         print(f"!!!!!!!!!!!!!!! {param_name} contains NaN values")
                         print(f"{param_name}: {param_value}")
-                else:
-                    print(f"{param_name}: {param_value} (not a tensor)")
-                    print("param_value: ", param_value)
+                # else:
+                #     print(f"{param_name}: {param_value} (not a tensor)")
+                #     print("param_value: ", param_value)
         return dist, log_prob, entropy
 
     # Save model parameters

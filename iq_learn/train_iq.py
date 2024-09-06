@@ -297,6 +297,13 @@ def main(cfg: DictConfig):
            
             expert_cond_list = emb_list["emb"]
             expert_cond = torch.stack(expert_cond_list, dim=0)
+            
+            epsilon = 1e-6  # Small value to avoid numerical issues
+            if args.agent.name=="sac" and (expert_action.min() < -1.0 or expert_action.max() > 1.0):
+                print(f"Action out of bound: {expert_action.min()}, {expert_action.max()}") 
+                print("Force normalizing expert action to [-1, 1]")
+                expert_action = torch.clamp(expert_action, min=-1.0 + epsilon, max=1.0 - epsilon)
+                print(expert_action.min(), expert_action.max())
             losses = agent.bc_update(
                 expert_obs,
                 expert_action,
