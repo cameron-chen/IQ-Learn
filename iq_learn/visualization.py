@@ -1,7 +1,8 @@
-import os
+# !pip install gym=0.26 mujoco==2.3.3
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1" # before import torch, keras
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
+os.environ['MUJOCO_GL'] = 'egl'  # Add this as well
 import hydra
 import numpy as np
 import torch
@@ -19,6 +20,7 @@ from utils.utils import (average_dicts, eval_mode, evaluate,
 from typing import IO, Any, Dict
 import pickle
 from render_browser import render_browser
+import time
 
 def get_args(cfg: DictConfig):
     cfg.device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -50,10 +52,6 @@ def read_file(path: str, file_handle: IO[Any]) -> Dict[str, Any]:
         raise NotImplementedError
     return data
 
-import gym
-from gym import wrappers
-from gym.wrappers import Monitor
-from pyvirtualdisplay import Display
 # @render_browser
 def rollout(actor, env, perturb_condition, num_episodes=3, video_name="perturb"):
     """Evaluates the policy and render a video
@@ -64,49 +62,37 @@ def rollout(actor, env, perturb_condition, num_episodes=3, video_name="perturb")
     Returns:
       Averaged reward and a total number of steps.
     """
-    # vidsavedir = "./video"
-    # env = gym.make("Hopper-v2")
-    # env = wrappers.Monitor(env, vidsavedir, force=True, video_callable=lambda episode_id: True)
-    # env.reset()
-    # env = gym.wrappers.RecordVideo(env=env, 
-    #                                video_folder="./video", 
-    #                                name_prefix=video_name, 
-    #                                episode_trigger=lambda x: x % 2 == 0)
-    # env = wrappers.Monitor(env, "./video", codec='mpeg4')
-    # env = wrappers.Monitor(env, "./video", video_callable=lambda episode_id: True, force=True)
-    # env = RecordVideo(env=env, video_path="./video/video.mp4")
-    
-    
-    state = env.reset()    
+    # state = env.reset()    
     traj = []
     total_timesteps = []
     total_returns = []
     actions = []
-    # env.start_video_recorder()
-    display = Display(visible=0, size=(1400, 900, 24))
-    display.start()
-    while len(total_returns) < num_episodes:
-        state = env.reset()
-        done = False
-        terminated = False
-        cond = perturb_condition
-        with eval_mode(actor):
-            while not done and not terminated:
-                # yield env.render(mode='rgb_array')
-                # env.render()
-                action = actor.choose_action((state,cond), sample=False)
-                next_state, reward, done, info = env.step(action)
-                state = next_state
-                env.render()
-        
-                if 'episode' in info.keys():
-                    total_returns.append(info['episode']['r'])
-                    total_timesteps.append(info['episode']['l'])
-                traj.append((state, next_state, action, reward, done))
-                actions.append(action)
+    dones = 0
+
+    # while len(total_returns) < num_episodes and dones < num_episodes:
+    state, _ = env.reset()
+    done = False
+    terminated = False
+    truncated = False
+    cond = perturb_condition
+    with eval_mode(actor):
+        while not done and not terminated and not truncated:
+            # yield env.render(mode='rgb_array')
+            # env.render()
+            action = actor.choose_action((state,cond), sample=False)
+            next_state, reward, terminated, truncated, info= env.step(action)
+            done = truncated or terminated 
+            state = next_state
+            # env.render()
     
-    env.close()
-    display.stop()
+            if 'episode' in info.keys():
+                total_returns.append(info['episode']['r'])
+                total_timesteps.append(info['episode']['l'])
+            if done:
+                dones += 1
+            traj.append((state, next_state, action, reward, done))
+            actions.append(action)
+
     return actions 
 
    
@@ -153,26 +139,38 @@ def main(cfg: DictConfig):
     else:
         raise ValueError(f"Condition file {cond_location} not found")
 
-    # display = Display(visible=0, size=(1400, 900, 24))
-    # display.start()
-    try:
-        condition = conds["emb"][20]
-        if args.experimental == "perturb":
-            print(f"Perturbed Condition:  Perturb one dimension of the condition")
-            for dim in range(2):
-                for value in range(-5,-4,1):
-                    perturb_condition = condition.copy()
-                    perturb_condition[dim] = value/2
-                    print(f"Dimension {dim} perturbed to {value}")
-                    actions = rollout(agent, eval_env, perturb_condition, num_episodes=args.eval.eps, video_name=f"perturb_dim{dim}_val{value}")
-                    # render(eval_env, actions, "./video")
-    except KeyboardInterrupt:
-        pass
-    finally:
-        # eval_env.close()
-        # display.stop()
-        pass
-
+    condition = conds["emb"][20]
+    if args.experimental == "perturb":
+        print(f"Perturbed Condition:  Perturb one dimension of the condition")
+        print_condition = [f"{x:.2f}" for x in condition]
+        print(f"(High) Original Condition: {print_condition}")
+        print(f"(Medium):{[f"{x:.2f}" for x in conds["emb"][10]]}")
+        print(f"(Low):{[f"{x:.2f}" for x in conds["emb"][0]]}")
+        for dim in range(2,10,1):
+            print(f"Perturbing dimension {dim}:")
+            for value in range(-6,6,1):
+                perturb_value = value/2
+                video_folder = f'/home/zichang/proj/IQ-Learn/iq_learn/video/{args.env.short_name}'
+                eval_env = make_env(args, render=True, video_folder=video_folder, video_name=f"perturb_dim{dim}_val{perturb_value}")
+                perturb_condition = condition.copy()
+                perturb_condition[dim] = perturb_value
+                # each dim to :2f for printing
+                print_condition = [f"{x:.2f}" for x in perturb_condition]
+                print(f"Current Condition: {print_condition}")
+                try:
+                    rollout(agent, eval_env, perturb_condition, num_episodes=args.eval.eps, video_name=f"perturb_dim{dim}_val{value}")
+                finally:
+                    if eval_env is not None:
+                        eval_env.close_video_recorder()
+                        eval_env.close()
+                        print("Environment closed after rollouts.\n")
+                
+    # Clean up meta and other related files
+    video_folder = f"/home/zichang/proj/IQ-Learn/iq_learn/video/{args.env.short_name}"
+    for filename in os.listdir(video_folder):
+        if filename.endswith(".meta.json"):
+            os.remove(os.path.join(video_folder, filename))
+            print(f"Removed {filename}")
 
 if __name__ == '__main__':
     main()
