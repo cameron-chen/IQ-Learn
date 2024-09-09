@@ -145,7 +145,7 @@ def main(cfg: DictConfig):
     else:
         print(f"Directory {result_last_dir} already exists")
     # Save the plot as a PNG file
-    plot_filename = f'{args.env.short_name}_weighted.png'
+    plot_filename = f'{args.env.short_name}_{args.experimental}.png'
     plt.savefig(plot_filename)
     print(f"Plot saved as {plot_filename}")
 
@@ -161,7 +161,7 @@ def main(cfg: DictConfig):
 
     df = pd.DataFrame(data)
     
-    csv_filename = f'{args.env.short_name}_weighted.csv'
+    csv_filename = f'{args.env.short_name}_{args.experimental}.csv'
     df.to_csv(csv_filename, index=False)
     print(f"Data has been saved to '{csv_filename}'.")
 
