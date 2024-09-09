@@ -63,7 +63,7 @@ def get_random_cond(cond_dim, cond_type, conditions, eval_index=0, experimental=
     conds = conditions["emb"]
     # select random index from conds length
     index = random.randint(0, len(conds)-1)
-    if "weighted" in experimental:
+    if "weighted_lowAndHigh" in experimental:
         if experimental=="weighted":
             alpha = 0.5
         else:
@@ -78,11 +78,51 @@ def get_random_cond(cond_dim, cond_type, conditions, eval_index=0, experimental=
         if not (0 <= alpha <= 1):
             raise ValueError(f"Alpha value must be between 0 and 1. Got: {alpha}")
 
+        eval_index=0
         # Calculate the average of the current condition and the condition with index+10
         cond_first = conds[eval_index][:cond_dim]
         cond_second = conds[(eval_index+20) % len(conds)][:cond_dim]
         cond = alpha * cond_first + (1 - alpha) * cond_second
+    elif "weighted_lowAndMedium" in experimental:
+        if experimental=="weighted":
+            alpha = 0.5
+        else:
+            # Extract the alpha value from the experimental string
+            alpha_str = experimental.replace("weighted", "")
+            try:
+                alpha = float(alpha_str)  # Convert the string to a float
+            except ValueError:
+                raise ValueError(f"Invalid alpha value extracted: '{alpha_str}'")
 
+        # Ensure alpha is within the valid range [0, 1]
+        if not (0 <= alpha <= 1):
+            raise ValueError(f"Alpha value must be between 0 and 1. Got: {alpha}")
+
+        eval_index=0
+        # Calculate the average of the current condition and the condition with index+10
+        cond_first = conds[eval_index][:cond_dim]
+        cond_second = conds[(eval_index+10) % len(conds)][:cond_dim]
+        cond = alpha * cond_first + (1 - alpha) * cond_second
+    elif "weighted_mediumAndHigh" in experimental:
+        if experimental=="weighted":
+            alpha = 0.5
+        else:
+            # Extract the alpha value from the experimental string
+            alpha_str = experimental.replace("weighted", "")
+            try:
+                alpha = float(alpha_str)  # Convert the string to a float
+            except ValueError:
+                raise ValueError(f"Invalid alpha value extracted: '{alpha_str}'")
+
+        # Ensure alpha is within the valid range [0, 1]
+        if not (0 <= alpha <= 1):
+            raise ValueError(f"Alpha value must be between 0 and 1. Got: {alpha}")
+
+        eval_index=10
+        # Calculate the average of the current condition and the condition with index+10
+        cond_first = conds[eval_index][:cond_dim]
+        cond_second = conds[(eval_index+10) % len(conds)][:cond_dim]
+        cond = alpha * cond_first + (1 - alpha) * cond_second
     elif experimental=="noise":
         # modify one dim of the condition
         cond = conds[eval_index][:cond_dim]

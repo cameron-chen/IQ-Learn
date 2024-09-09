@@ -8,7 +8,7 @@ from wrappers.normalize_action_wrapper import check_and_normalize_box_actions
 import envs
 import numpy as np
 import os
-import seals
+# import seals
 
 # Register all custom envs
 envs.register_custom_envs()
@@ -74,13 +74,19 @@ def is_atari(env_name):
                         'SeaquestNoFrameskip-v4']
 
 
-def make_env(args, monitor=True):
+def make_env(args, monitor=True, render=False, 
+             video_folder=f'/home/zichang/proj/IQ-Learn/iq_learn/video',
+             video_name="video"):
     if 'dmc' in args.env.name:
         env = make_dcm(args)
     else:
-        env = gym.make(args.env.name)
+        if render:
+            env = gym.make(args.env.name, render_mode="rgb_array")
+            env = gym.wrappers.RecordVideo(env, video_folder,name_prefix=video_name, video_length=500, episode_trigger=lambda ep: ep == 0) 
+        else:
+            env = gym.make(args.env.name)
     
-    if monitor:
+    if monitor and render==False:
         env = Monitor(env, "gym")
 
     if is_atari(args.env.name):

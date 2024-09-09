@@ -77,13 +77,14 @@ def main(cfg: DictConfig):
                     name=f"{args.env.short_name} bc_init{args.method.bc_init} level{args.num_levels}"
                 )
             else:
-                exp_name = args.env.cond
+                level = "" if args.num_levels < 3 else f"level{args.num_levels} "
+                exp_name = f"{args.env.short_name} bc_init{args.method.bc_init} {level}actor{args.agent.actor_lr} critic{args.agent.critic_lr}"
                 wandb.init(
                     project="hil_iq", 
                     sync_tensorboard=True, 
                     reinit=True, 
                     config=args, 
-                    name=f"{args.env.short_name} bc_init{args.method.bc_init} level{args.num_levels} {args.additional_loss} {args.cql_coef}"
+                    name=exp_name
                 )
         else: 
             exp_name = args.env.demo

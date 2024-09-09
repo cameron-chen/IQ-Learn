@@ -15,6 +15,9 @@ from utils.utils import (average_dicts, eval_mode, evaluate,
                          get_concat_samples, hard_update, soft_update)
 from typing import IO, Any, Dict
 import pickle
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
 def get_args(cfg: DictConfig):
     cfg.device = "cuda:0" if torch.cuda.is_available() else "cpu"
     cfg.hydra_base_dir = os.getcwd()
@@ -88,21 +91,78 @@ def main(cfg: DictConfig):
     else:
         raise ValueError(f"Condition file {cond_location} not found")
 
-    if args.experimental == "weighted":
-        print(f"Weighted Condition: alpha*low_condition+(1-alpha)*high_condition, eval.eps={args.eval.eps}")
+    if args.experimental == "weighted_lowAndHigh":
+        print(f"{args.experimental}: alpha*low_condition+(1-alpha)*high_condition, eval.eps={args.eval.eps}")
         print("Episode_reward:")
+        alphas = []
+        means = []
+        stds = []
+        all_returns = []
         for i in range(10, -1, -1):
             alpha = "{:.2f}".format(i*0.1)
+            alphas.append(alpha)
             experimental_indexed = args.experimental + alpha
             eval_index = 0
-            eval_returns, eval_timesteps = evaluate(agent, eval_env, cond_location, num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index, experimental=experimental_indexed)
-            returns = np.mean(eval_returns)
-            print(f'Alpha={alpha}:', returns)
-    elif "weighted" in args.experimental:
-        eval_index = 0
-        eval_returns, eval_timesteps = evaluate(agent, eval_env, cond_location, num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index, experimental=args.experimental)
-        returns = np.mean(eval_returns)
-        print(f'episode_reward:', returns)
+            eval_returns, eval_timesteps = evaluate(agent, eval_env, conds, num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index, experimental=experimental_indexed)
+            
+            # Calculate mean and std of returns
+            mean_returns = np.mean(eval_returns)
+            std_returns = np.std(eval_returns)
+            
+            means.append(mean_returns)
+            stds.append(std_returns)
+            all_returns.append(eval_returns)
+            print(f'Alpha={alpha}:', mean_returns)
+
+        # Convert lists to numpy arrays for easier handling
+    alphas = np.array(alphas, dtype=float)
+    means = np.array(means)
+    stds = np.array(stds)
+
+    # Calculate mean + std and mean - std
+    mean_plus_std = means + stds
+    mean_minus_std = means - stds
+
+    # Plot the graphs in the same plot
+    plt.figure(figsize=(10, 6))
+
+    plt.plot(alphas, means, marker='o', label='Mean')
+    plt.plot(alphas, mean_plus_std, marker='o', linestyle='--', label='Mean + Std')
+    plt.plot(alphas, mean_minus_std, marker='o', linestyle='--', label='Mean - Std')
+
+    plt.title('Mean, Mean + Std, and Mean - Std of Returns')
+    plt.xlabel('Alpha')
+    plt.ylabel('Return')
+    plt.legend()
+
+    exp_dir = args.exp_dir
+    result_last_dir = os.path.join(exp_dir, args.env.short_name)
+
+    if not os.path.exists(result_last_dir):
+        os.makedirs(result_last_dir)
+        print(f"Created directory {result_last_dir}")
+    else:
+        print(f"Directory {result_last_dir} already exists")
+    # Save the plot as a PNG file
+    plot_filename = f'{args.env.short_name}_weighted.png'
+    plt.savefig(plot_filename)
+    print(f"Plot saved as {plot_filename}")
+
+    plt.show()
+
+    # Save the mean, std, and returns to a CSV file
+    data = {
+        'Alpha': alphas,
+        'Mean': means,
+        'Std': stds,
+        'Returns': [r.tolist() for r in all_returns]  # Convert numpy arrays to lists
+    }
+
+    df = pd.DataFrame(data)
+    
+    csv_filename = f'{args.env.short_name}_weighted.csv'
+    df.to_csv(csv_filename, index=False)
+    print(f"Data has been saved to '{csv_filename}'.")
 
 
 
