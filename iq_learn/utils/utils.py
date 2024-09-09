@@ -64,11 +64,11 @@ def get_random_cond(cond_dim, cond_type, conditions, eval_index=0, experimental=
     # select random index from conds length
     index = random.randint(0, len(conds)-1)
     if "weighted_lowAndHigh" in experimental:
-        if experimental=="weighted":
+        if experimental=="weighted_lowAndHigh":
             alpha = 0.5
         else:
             # Extract the alpha value from the experimental string
-            alpha_str = experimental.replace("weighted", "")
+            alpha_str = experimental.replace("weighted_lowAndHigh", "")
             try:
                 alpha = float(alpha_str)  # Convert the string to a float
             except ValueError:
@@ -84,11 +84,11 @@ def get_random_cond(cond_dim, cond_type, conditions, eval_index=0, experimental=
         cond_second = conds[(eval_index+20) % len(conds)][:cond_dim]
         cond = alpha * cond_first + (1 - alpha) * cond_second
     elif "weighted_lowAndMedium" in experimental:
-        if experimental=="weighted":
+        if experimental=="weighted_lowAndMedium":
             alpha = 0.5
         else:
             # Extract the alpha value from the experimental string
-            alpha_str = experimental.replace("weighted", "")
+            alpha_str = experimental.replace("weighted_lowAndMedium", "")
             try:
                 alpha = float(alpha_str)  # Convert the string to a float
             except ValueError:
@@ -104,11 +104,11 @@ def get_random_cond(cond_dim, cond_type, conditions, eval_index=0, experimental=
         cond_second = conds[(eval_index+10) % len(conds)][:cond_dim]
         cond = alpha * cond_first + (1 - alpha) * cond_second
     elif "weighted_mediumAndHigh" in experimental:
-        if experimental=="weighted":
+        if experimental=="weighted_mediumAndHigh":
             alpha = 0.5
         else:
             # Extract the alpha value from the experimental string
-            alpha_str = experimental.replace("weighted", "")
+            alpha_str = experimental.replace("weighted_mediumAndHigh", "")
             try:
                 alpha = float(alpha_str)  # Convert the string to a float
             except ValueError:
