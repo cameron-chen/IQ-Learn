@@ -91,7 +91,7 @@ def main(cfg: DictConfig):
     else:
         raise ValueError(f"Condition file {cond_location} not found")
 
-    if args.experimental == "weighted_lowAndHigh":
+    if args.experimental is not None:
         print(f"{args.experimental}: alpha*low_condition+(1-alpha)*high_condition, eval.eps={args.eval.eps}")
         print("Episode_reward:")
         alphas = []
@@ -114,7 +114,7 @@ def main(cfg: DictConfig):
             all_returns.append(eval_returns)
             print(f'Alpha={alpha}:', mean_returns)
 
-        # Convert lists to numpy arrays for easier handling
+    # Convert lists to numpy arrays for easier handling
     alphas = np.array(alphas, dtype=float)
     means = np.array(means)
     stds = np.array(stds)
