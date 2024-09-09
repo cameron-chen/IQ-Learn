@@ -139,8 +139,9 @@ def main(cfg: DictConfig):
     result_last_dir = os.path.join(exp_dir, args.env.short_name)
 
     if not os.path.exists(result_last_dir):
-        os.makedirs(result_last_dir)
-        print(f"Created directory {result_last_dir}")
+        print(f"Please create directory {result_last_dir} first")
+        # os.makedirs(result_last_dir)
+        # print(f"Created directory {result_last_dir}")
     else:
         print(f"Directory {result_last_dir} already exists")
     # Save the plot as a PNG file
