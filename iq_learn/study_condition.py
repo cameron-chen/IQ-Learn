@@ -151,12 +151,14 @@ def main(cfg: DictConfig):
 
     plt.show()
 
+    def convert_to_list(item):
+        return item.tolist() if isinstance(item, np.ndarray) else item
     # Save the mean, std, and returns to a CSV file
     data = {
         'Alpha': alphas,
         'Mean': means,
         'Std': stds,
-        'Returns': [r.tolist() for r in all_returns]  # Convert numpy arrays to lists
+        'Returns': [convert_to_list(r) for r in all_returns]
     }
 
     df = pd.DataFrame(data)
