@@ -345,7 +345,7 @@ def main(cfg: DictConfig):
                     break
 
             # eval every n steps
-            if learn_steps_bc % 100 == 0:  # args.env.eval_interval == 0:
+            if learn_steps_bc % args.env.eval_interval == 0:
                 eval_num = 0 
                 for eval_index in range(eval_num):
                     # low ability level
@@ -466,6 +466,23 @@ def main(cfg: DictConfig):
                 if learn_steps == LEARN_STEPS:
                     print('Finished!')
                     wandb.finish()
+
+                    # Save the last model
+                    if args.save_last:
+                        exp_dir = args.exp_dir
+                        result_last_dir = os.path.join(exp_dir, "result_last")
+
+                        if not os.path.exists(result_last_dir):
+                            os.makedirs(result_last_dir)
+                            print(f"Created directory {result_last_dir}")
+                        else:
+                            print(f"Directory {result_last_dir} already exists")
+                        # name the loc with timestamp
+                        ts_str = datetime.datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d_%H-%M-%S")
+                        save_loc = os.path.join(result_last_dir, f"{ts_str}")
+
+                        agent.save(save_loc)
+                        print(f"Saved model at {save_loc}")     
                     return
 
                 ######
@@ -485,29 +502,14 @@ def main(cfg: DictConfig):
             state = next_state
 
         rewards_window.append(episode_reward)
-        logger.log('train/episode', epoch, learn_steps)
-        logger.log('train/episode_reward', episode_reward, learn_steps)
-        logger.log('train/duration', time.time() - start_time, learn_steps)
-        logger.dump(learn_steps, save=begin_learn)
+        # logger.log('train/episode', epoch, learn_steps)
+        # logger.log('train/episode_reward', episode_reward, learn_steps)
+        # logger.log('train/duration', time.time() - start_time, learn_steps)
+        # logger.dump(learn_steps, save=begin_learn)
         # print('TRAIN\tEp {}\tAverage reward: {:.2f}\t'.format(epoch, np.mean(rewards_window)))
         save(agent, epoch, args, output_dir='results')
 
-    # Save the last model
-    if args.save_last:
-        exp_dir = args.exp_dir
-        result_last_dir = os.path.join(exp_dir, "result_last")
-
-        if not os.path.exists(result_last_dir):
-            os.makedirs(result_last_dir)
-            print(f"Created directory {result_last_dir}")
-        else:
-            print(f"Directory {result_last_dir} already exists")
-        # name the loc with timestamp
-        ts_str = datetime.datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d_%H-%M-%S")
-        save_loc = os.path.join(result_last_dir, f"{ts_str}")
-
-        agent.save(save_loc)
-        print(f"Saved model at {save_loc}")
+    
 def get_mu_logvar(logit_arrays, m_arrays, encoder, device):
     logit_arrays = np.array(logit_arrays)
     m_arrays = np.array(m_arrays)
@@ -846,7 +848,7 @@ def iq_update_critic(self, policy_batch, expert_batch, logger, step, cond_type):
             cql_loss = args.cql_coef*(self.cqlV((expert_obs, expert_cond), self.critic.Q,args.num_random) - current_Q.mean())
             critic_loss += cql_loss
             loss_dict["cql_loss"] = cql_loss
-    logger.log('train/critic_loss', critic_loss, step)
+    # logger.log('train/critic_loss', critic_loss, step)
 
     # Optimize the critic
     self.critic_optimizer.zero_grad()
