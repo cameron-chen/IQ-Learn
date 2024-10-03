@@ -75,8 +75,8 @@ def get_random_cond(cond_dim, cond_type, conditions, eval_index=0, experimental=
                 raise ValueError(f"Invalid alpha value extracted: '{alpha_str}'")
 
         # Ensure alpha is within the valid range [0, 1]
-        if not (0 <= alpha <= 1):
-            raise ValueError(f"Alpha value must be between 0 and 1. Got: {alpha}")
+        # if not (0 <= alpha <= 1):
+        #     raise ValueError(f"Alpha value must be between 0 and 1. Got: {alpha}")
 
         eval_index=0
         # Calculate the average of the current condition and the condition with index+10
@@ -94,10 +94,6 @@ def get_random_cond(cond_dim, cond_type, conditions, eval_index=0, experimental=
             except ValueError:
                 raise ValueError(f"Invalid alpha value extracted: '{alpha_str}'")
 
-        # Ensure alpha is within the valid range [0, 1]
-        if not (0 <= alpha <= 1):
-            raise ValueError(f"Alpha value must be between 0 and 1. Got: {alpha}")
-
         eval_index=0
         # Calculate the average of the current condition and the condition with index+10
         cond_first = conds[eval_index][:cond_dim]
@@ -114,10 +110,6 @@ def get_random_cond(cond_dim, cond_type, conditions, eval_index=0, experimental=
             except ValueError:
                 raise ValueError(f"Invalid alpha value extracted: '{alpha_str}'")
 
-        # Ensure alpha is within the valid range [0, 1]
-        if not (0 <= alpha <= 1):
-            raise ValueError(f"Alpha value must be between 0 and 1. Got: {alpha}")
-
         eval_index=10
         # Calculate the average of the current condition and the condition with index+10
         cond_first = conds[eval_index][:cond_dim]
@@ -127,6 +119,18 @@ def get_random_cond(cond_dim, cond_type, conditions, eval_index=0, experimental=
         # modify one dim of the condition
         cond = conds[eval_index][:cond_dim]
         cond[random.randint(0,cond_dim-1)] = 0
+    elif "perturb" in experimental:
+        try:
+            perturb_index_str, perturb_value_str = experimental.replace("perturb", "").split("_")
+            perturb_index = int(perturb_index_str)  # Convert the index to an integer
+            perturb_value = float(perturb_value_str)  # Convert the value to a float
+        except (ValueError, IndexError):
+            raise ValueError(f"Invalid experimental format: '{experimental}'")
+
+        eval_index = 20
+        cond = conds[eval_index][:cond_dim]
+        cond[perturb_index] = perturb_value
+
     elif cond_type=="random":
         cond = conds[index][:cond_dim]
     elif cond_type=="debug":

@@ -144,21 +144,26 @@ def main(cfg: DictConfig):
         print(f"Perturbed Condition:  Perturb one dimension of the condition")
         print_condition = [f"{x:.2f}" for x in condition]
         print(f"(High) Original Condition: {print_condition}")
-        print(f"(Medium):{[f"{x:.2f}" for x in conds["emb"][10]]}")
-        print(f"(Low):{[f"{x:.2f}" for x in conds["emb"][0]]}")
-        for dim in range(2,10,1):
+        medium = [f"{x:.2f}" for x in conds["emb"][10]]
+        # print(f"(Medium):{medium}")
+        low = [f"{x:.2f}" for x in conds["emb"][0]]
+        print(f"(Low):{low}")
+        print("\n")
+        dims = [9]
+        for dim in dims:
             print(f"Perturbing dimension {dim}:")
-            for value in range(-6,6,1):
-                perturb_value = value/2
+            values = [-2.6,-2.7,-2.8,-2.9]
+            for perturb_value in values:
                 video_folder = f'/home/zichang/proj/IQ-Learn/iq_learn/video/{args.env.short_name}'
                 eval_env = make_env(args, render=True, video_folder=video_folder, video_name=f"perturb_dim{dim}_val{perturb_value}")
                 perturb_condition = condition.copy()
                 perturb_condition[dim] = perturb_value
                 # each dim to :2f for printing
                 print_condition = [f"{x:.2f}" for x in perturb_condition]
+                # perturb_condition = condition # todo remove
                 print(f"Current Condition: {print_condition}")
                 try:
-                    rollout(agent, eval_env, perturb_condition, num_episodes=args.eval.eps, video_name=f"perturb_dim{dim}_val{value}")
+                    rollout(agent, eval_env, perturb_condition, num_episodes=args.eval.eps, video_name=f"perturb_dim{dim}_val{perturb_value}")
                 finally:
                     if eval_env is not None:
                         eval_env.close_video_recorder()

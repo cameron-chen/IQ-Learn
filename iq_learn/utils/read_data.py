@@ -65,38 +65,68 @@ def evolution():
 def main():
     # make expert_location an argument
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("file", type=str, help="name of the condition file")
+    arg_parser.add_argument("file", type=str, help="name of the file")
     args = arg_parser.parse_args()
     expert_location = args.file
     # expert_location = 'experts/LunarLander-v2_100_230r.pkl'
     with open(expert_location, 'rb') as f:
         trajs = read_file(expert_location, f)
+    
+    # Calculate mean and std for each skill level
+    results = []
+    skill_levels = ['Low', 'Medium', 'High']
+    import numpy as np
+    for i in range(3):
+        skill_rewards = trajs['rewards'][i * 10:(i + 1) * 10]  # Get 10 rewards for each skill level
+        total_rewards = [sum(reward) for reward in skill_rewards]  # Sum the 1000 steps for each reward
+        mean = np.mean(total_rewards)
+        std = np.std(total_rewards)
+        results.append(f"& ${mean:.1f}\\pm{std:.1f}$ ")
 
+    # # Print the results
+    for i, result in enumerate(results):
+        skill_level = skill_levels[i]
+        print(f"{skill_level}: {result}")
+
+#%% --> Print the keys of the trajs
+    # print(f"Type of trajs: {type(trajs)}")
+    # print(f"Keys of trajs: {trajs.keys()}")
+    # print(f"Length of trajs: {len(trajs)}")
+    # print(f"Length of states: {len(trajs['states'])}")
+    # print(f"Length of actions: {len(trajs['actions'])}")
+    # print(f"Length of rewards: {len(trajs['rewards'])}")
+    # print(f"Length of lengths: {len(trajs['lengths'])}")
+    # print(f"trajs['states'] shape: {trajs['states'][0].shape}")
+    # print(f"trajs['next_states'] shape: {trajs['next_states'][0].shape}")
+    # print(f"trajs['actions'] shape: {trajs['actions'][0].shape}")
+    # print(f"trajs['rewards'] shape: {trajs['rewards'][0].shape}")
+    # print(f"trajs['lengths'] shape: {trajs['lengths'][0]}")
+    # print(f"traj['lengths']: {trajs['lengths']}")
 #%% --> Compute distance between embeddings
-    # from scipy.stats import wasserstein_distance
-    # import numpy as np
+    from scipy.stats import wasserstein_distance
+    import numpy as np
 
-    # # Assume trajs["emb"] is a numpy array with shape (30, 10), where the first 10 rows are for skill level 1,
-    # # the next 10 rows are for skill level 2, and the last 10 rows are for skill level 3.
+    # Assume trajs["emb"] is a numpy array with shape (30, 10), where the first 10 rows are for skill level 1,
+    # the next 10 rows are for skill level 2, and the last 10 rows are for skill level 3.
 
-    # # Split the embeddings based on skill levels
-    # skill_level_1 = trajs["emb"][:10]  # First 10 embeddings
-    # skill_level_2 = trajs["emb"][10:20]  # Next 10 embeddings
-    # skill_level_3 = trajs["emb"][20:30]  # Last 10 embeddings
+    # Split the embeddings based on skill levels
+    skill_level_1 = trajs["emb"][:10]  # First 10 embeddings
+    skill_level_2 = trajs["emb"][10:20]  # Next 10 embeddings
+    skill_level_3 = trajs["emb"][20:30]  # Last 10 embeddings
 
-    # # Compute the Wasserstein distance between the distributions of different skill levels
-    # dist_1_2 = [wasserstein_distance(skill_level_1[:, i], skill_level_2[:, i]) for i in range(skill_level_1.shape[1])]
-    # dist_1_3 = [wasserstein_distance(skill_level_1[:, i], skill_level_3[:, i]) for i in range(skill_level_1.shape[1])]
-    # dist_2_3 = [wasserstein_distance(skill_level_2[:, i], skill_level_3[:, i]) for i in range(skill_level_1.shape[1])]
+    # Compute the Wasserstein distance between the distributions of different skill levels
+    dist_1_2 = [wasserstein_distance(skill_level_1[:, i], skill_level_2[:, i]) for i in range(skill_level_1.shape[1])]
+    dist_1_3 = [wasserstein_distance(skill_level_1[:, i], skill_level_3[:, i]) for i in range(skill_level_1.shape[1])]
+    dist_2_3 = [wasserstein_distance(skill_level_2[:, i], skill_level_3[:, i]) for i in range(skill_level_1.shape[1])]
 
-    # # Average the distances across all dimensions
-    # average_dist_1_2 = np.mean(dist_1_2)
-    # average_dist_1_3 = np.mean(dist_1_3)
-    # average_dist_2_3 = np.mean(dist_2_3)
+    # Average the distances across all dimensions
+    average_dist_1_2 = np.mean(dist_1_2)
+    average_dist_1_3 = np.mean(dist_1_3)
+    average_dist_2_3 = np.mean(dist_2_3)
 
-    # print("Wasserstein Distance between skill level 1 and 2:", average_dist_1_2)
-    # print("Wasserstein Distance between skill level 1 and 3:", average_dist_1_3)
-    # print("Wasserstein Distance between skill level 2 and 3:", average_dist_2_3)
+    print("Wasserstein Distance between skill level 1 and 2:", average_dist_1_2)
+    print("Wasserstein Distance between skill level 1 and 3:", average_dist_1_3)
+    print("Wasserstein Distance between skill level 2 and 3:", average_dist_2_3)
 
 
 # with open('experts/CartPole-v1_1000.pkl', 'rb') as f:

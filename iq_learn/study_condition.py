@@ -1,3 +1,8 @@
+"""
+Ablation study, options by args.experimental:
+1. weighted: weighted condition on two conditions
+2. perturb: perturbing a single dimension of the condition
+"""
 import os
 import hydra
 import numpy as np
@@ -91,18 +96,20 @@ def main(cfg: DictConfig):
     else:
         raise ValueError(f"Condition file {cond_location} not found")
 
-    if args.experimental is not None:
+    if "weighted" in args.experimental:
         print(f"{args.experimental}: alpha*low_condition+(1-alpha)*high_condition, eval.eps={args.eval.eps}")
         print("Episode_reward:")
         alphas = []
         means = []
         stds = []
         all_returns = []
+        custom_index = range(-10, 1, 2) # custom index to replace for loop for more ablation study
+        # for i in custom_index:
         for i in range(10, -1, -1):
             alpha = "{:.2f}".format(i*0.1)
             alphas.append(alpha)
             experimental_indexed = args.experimental + alpha
-            eval_index = 0
+            eval_index = 0 # placeholder
             eval_returns, eval_timesteps = evaluate(agent, eval_env, conds, num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index, experimental=experimental_indexed)
             
             # Calculate mean and std of returns
@@ -113,7 +120,32 @@ def main(cfg: DictConfig):
             stds.append(std_returns)
             all_returns.append(eval_returns)
             print(f'Alpha={alpha}:', mean_returns)
-
+    elif "perturb" in args.experimental:
+        print(f"{args.experimental}: -2.5 to 2.5, eval.eps={args.eval.eps}") 
+        alphas = []
+        means = []
+        stds = []
+        all_returns = []
+        dim = args.experimental.replace("perturb", "")
+        dim = int(dim)
+        original_value = conds["emb"][20][dim] 
+        print(f"Original value: {original_value}")
+        print("Episode_reward:")
+        for i in range(-25, 26, 5):
+            perturb_value = "{:.2f}".format(original_value + i*0.1)
+            alphas.append(perturb_value)
+            experimental_indexed = args.experimental + "_" + perturb_value
+            eval_index = 0 # placeholder
+            eval_returns, eval_timesteps = evaluate(agent, eval_env, conds, num_episodes=args.eval.eps, cond_dim=args.cond_dim, cond_type=args.cond_type, eval_index=eval_index, experimental=experimental_indexed)
+            
+            # Calculate mean and std of returns
+            mean_returns = np.mean(eval_returns)
+            std_returns = np.std(eval_returns)
+            
+            means.append(mean_returns)
+            stds.append(std_returns)
+            all_returns.append(eval_returns)
+            print(f'Perturb value={perturb_value}:', mean_returns)
     # Convert lists to numpy arrays for easier handling
     alphas = np.array(alphas, dtype=float)
     means = np.array(means)
@@ -162,7 +194,13 @@ def main(cfg: DictConfig):
     }
 
     df = pd.DataFrame(data)
-    
+    result_last_dir = os.path.join(result_last_dir, "csv")
+    if not os.path.exists(result_last_dir):
+        print(f"Please create directory {result_last_dir} first")
+        # os.makedirs(result_last_dir)
+        # print(f"Created directory {result_last_dir}")
+    else:
+        print(f"Directory {result_last_dir} already exists")
     csv_filename = os.path.join(result_last_dir, f'{args.env.short_name}_{args.experimental}.csv')
     df.to_csv(csv_filename, index=False)
     print(f"Data has been saved to '{csv_filename}'.")

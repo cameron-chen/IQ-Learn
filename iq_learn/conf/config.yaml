@@ -1,3 +1,7 @@
+hydra:
+  run:
+    dir: /careAIDrive/zichang/misc/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
 exp_name: ''
 project_name: ${env.name}
 

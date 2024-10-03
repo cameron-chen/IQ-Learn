@@ -212,7 +212,7 @@ def main(cfg: DictConfig):
         previous_dir = os.getcwd()
 
         # Change to the desired directory
-        target_dir = '/home/zichang/proj/IQ-Learn/iq_learn/encoder'
+        target_dir = '/common/home/users/z/zichang.ge.2023/proj/IQ-Learn/iq_learn/encoder'
         os.chdir(target_dir)
         print("Current working directory: ", os.getcwd())
         sys.path.append(target_dir)
@@ -372,6 +372,7 @@ def main(cfg: DictConfig):
                 if cluster_mse<=0.0001:
                     exit_save(encoder, exp_dir, experts, device, learn_steps_bc, args)
                     print(f"Training has converged with cluster_mse {cluster_mse} Exiting...")
+                    wandb.finish()
                     sys.exit(0)
             # save the encoder every 500 steps
             # if (learn_steps_bc % args.bc_save_interval == 0 or learn_steps_bc==10) and learn_steps_bc > 0:
@@ -384,7 +385,8 @@ def main(cfg: DictConfig):
                 learn_steps_bc += 1
                 print("Finished BC!")
                 break
-    exit_save(encoder, exp_dir, experts, device, learn_steps_bc, args)    
+    exit_save(encoder, exp_dir, experts, device, learn_steps_bc, args) 
+    wandb.finish()   
     
 
 def exit_save(encoder, exp_dir, experts,device, learn_steps_bc, args):
