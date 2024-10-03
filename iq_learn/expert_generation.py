@@ -45,7 +45,7 @@ def main(cfg: DictConfig):
         print(f"Env short name : {args.env.short_name}")
         print(f"Env name : {args.env.name}")
         print("--> Training model, please expect a long training time")
-        three_level = True
+        three_level = False
         if three_level:
             for i in range(TOTAL_EPOCHS):
                 agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS, log_interval=10)
@@ -54,8 +54,21 @@ def main(cfg: DictConfig):
             # agent.load_state_dict(torch.load("/home/zichang/proj/IQ-Learn/iq_learn/iq.para/policy.pth"))
             
         else:
+            cumu = 0
+            TRAIN_TIMESTEPS = 14000
+            cumu += TRAIN_TIMESTEPS
             agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS, log_interval=10)
-            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/{args.env.short_name}/{TRAIN_TIMESTEPS}.zip'
+            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/{args.env.short_name}/{cumu}.zip'
+            agent.save(model_save_path)
+            TRAIN_TIMESTEPS = 4000
+            cumu += TRAIN_TIMESTEPS
+            agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS, log_interval=10)
+            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/{args.env.short_name}/{cumu}.zip'
+            agent.save(model_save_path)
+            TRAIN_TIMESTEPS = 2000
+            cumu += TRAIN_TIMESTEPS
+            agent = agent.learn(total_timesteps=TRAIN_TIMESTEPS, log_interval=10)
+            model_save_path = f'/home/zichang/proj/IQ-Learn/iq_learn/trained_policies/{args.env.short_name}/{cumu}.zip'
             agent.save(model_save_path)
         exit("Training done, please rerun the script with use_baselines=False to generate expert trajectories")
     else: # load model directly
@@ -120,8 +133,8 @@ def main(cfg: DictConfig):
         episode_infos = None
         for time_steps in range(EPS_STEPS):
             action, _states = agent.predict(state)
-            if action.any() > 1 or action.any() < -1:
-                print(f'Action out of bounds{action}')
+            if action.min() < -1.0 or action.max() > 1.0:
+                print(f"Action out of bound: {action.min()}, {action.max()}") 
             # action, _states = agent.predict(state, deterministic=True)
             # action = agent.choose_action(state)
             next_state, reward, done, info = env.step(action)

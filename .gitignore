@@ -144,6 +144,11 @@ iq_learn/test
 *.pkl
 *.sh
 *.ckpt
+*.mp4 
+*.meta.json
+*.csv
+*_actor
+*_critic
 
 iq_learn/scripts
 iq_learn/encoder/experiments

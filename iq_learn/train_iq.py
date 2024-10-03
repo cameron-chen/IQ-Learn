@@ -464,9 +464,6 @@ def main(cfg: DictConfig):
 
                 learn_steps += 1
                 if learn_steps == LEARN_STEPS:
-                    print('Finished!')
-                    wandb.finish()
-
                     # Save the last model
                     if args.save_last:
                         exp_dir = args.exp_dir
@@ -482,8 +479,13 @@ def main(cfg: DictConfig):
                         save_loc = os.path.join(result_last_dir, f"{ts_str}")
 
                         agent.save(save_loc)
-                        print(f"Saved model at {save_loc}")     
+                        print(f"Saved model at {save_loc}")    
+
+                    print('Finished!')  
+                    wandb.finish()
                     return
+
+                    
 
                 ######
                 # IQ-Learn Modification

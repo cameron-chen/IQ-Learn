@@ -189,6 +189,10 @@ def clustering_report(emb_list, exp_name, logname, n_features, env_name):
     # pyplot.savefig(f'plot/{exp_name}_kmeans.png')
     # calculate the ratio
     ratio = [[0 for i in range(n_features)] for i in range(n_features)]
+    if "level" not in emb_list.keys(): # temporary fix for baseline embs missing level
+        # 0, 1, 2 for proficiency levels corresponding to 0to9, 10to19, 20to29
+        cluster_num = len(emb_list["emb"])/n_features
+        emb_list["level"] = [int(i/cluster_num) for i in range(len(emb_list["emb"]))]
     for index, cluster in enumerate(yhat):
         proficiency_level = emb_list["level"][index]
         ratio[cluster][proficiency_level] += 1
@@ -315,7 +319,8 @@ def flatten(matrix, length=-1):
 
 def render_skills(config, emb_list, exp_name):
     # render sub-traj for each skill
-    if config.get("env") == "hil":
+    if True:
+    # if config.get("env") == "hil":
         full_loader = utils.hil_full_loader(100)
     else:
         raise ValueError()
@@ -335,13 +340,17 @@ def render_skills(config, emb_list, exp_name):
     success = 0
     for i in tqdm(range(299, -1,-1)):
         start_index = i*998
-        skill = z[i*998]
+        # skill = z[i*998]
+        skill = z[0] # TODO: uncomment above
         for j in range(998):
             current_index = i*998 + j
-            if z[current_index]!=skill:
-                if  current_index-start_index>5 and skill==2:
+            # if z[current_index]!=skill:
+            if True:  # TODO: uncomment above
+                # if  current_index-start_index>5 and skill==2:
+                if True: # TODO: uncomment above
                     print("Rendering skill {}...".format(skill))
-                    render(action_list[start_index:current_index+1],videodir+str(skill))
+                    # render(action_list[start_index:current_index+1],videodir+str(skill))
+                    render(action_list[start_index:start_index+998],videodir+str(skill)) # TODO: uncomment above
                     success += 1
                 skill = z[current_index]
                 start_index = current_index
@@ -455,9 +464,9 @@ def main():
         emb_list = run_exp(config, args.expert_file, datafile, args.embed_mode, args.cond_dim)
         print("Saved data")
     
-    LOGGER.info(">>> Num of skills in one traj: {}~{}, Average {}".format(min(emb_list["num_z"]), 
-                                                                      max(emb_list["num_z"]), 
-                                                                      sum(emb_list["num_z"])/len(emb_list["num_z"])))
+    # LOGGER.info(">>> Num of skills in one traj: {}~{}, Average {}".format(min(emb_list["num_z"]), 
+    #                                                                   max(emb_list["num_z"]), 
+    #                                                                   sum(emb_list["num_z"])/len(emb_list["num_z"])))
     # LOGGER.info(">>> Num of boundaries m=1 in one traj: {}~{}, Average {}".format(min(emb_list["num_m"]), 
     #                                                                   max(emb_list["num_m"]), 
     #                                                                   sum(emb_list["num_m"])/len(emb_list["num_m"])))
