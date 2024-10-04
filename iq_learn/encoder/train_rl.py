@@ -304,6 +304,7 @@ def main():
     LOGGER.info(args)
     LOGGER.info(">" * 80)
 
+    cwd = os.getcwd()
     # load dataset
     if "compile" in args.dataset_path:
         train_loader, test_loader = utils.compile_loader(args.batch_size)
@@ -346,7 +347,8 @@ def main():
             feat_size=args.belief_size,
         )
         output_normal = True
-        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
+        os.chdir(cwd)
+        # os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
     elif "cheetah" in args.dataset_path:
         train_loader, test_loader = utils.hil_loader(args.batch_size, args.hil_seq_size)
         full_loader = utils.cheetah_full_loader(1, args.eval_expert_file)

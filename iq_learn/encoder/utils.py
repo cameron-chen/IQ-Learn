@@ -1672,7 +1672,10 @@ def preprocess_gcpc_to_love_format(path: str, max_episode_length: int):
 class AntMazeDataset(Dataset):
     def __init__(self, partition, seq_size=700, expert_file=""):
         mycwd = os.getcwd()
-        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder/")
+        print(f"Working in: {mycwd}")
+        newcwd = mycwd + "/encoder/"
+        os.chdir(newcwd)
+        print(f"Working in: {newcwd}")
         dataset_paths = expert_file.split(",")
         state = []
         action = []
