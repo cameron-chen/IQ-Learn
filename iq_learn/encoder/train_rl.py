@@ -3,15 +3,15 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 import os
 os.environ['DISPLAY'] = ':1'
-import psutil
+# import psutil
 # obtain number of CPUs on the system
 # print(f'Number of CPUs: {psutil.cpu_count()}')
 # before assign cpu
-p = psutil.Process()
+# p = psutil.Process()
 # print(f'CPU pool before assignment: {p.cpu_affinity()}')
 # after assign cpu
-p.cpu_affinity(range(0,32))
-print(f'CPU pool after assignment: {p.cpu_affinity()}')
+# p.cpu_affinity(range(0,32))
+# print(f'CPU pool after assignment: {p.cpu_affinity()}')
 import argparse
 import sys
 import os
@@ -331,6 +331,22 @@ def main():
             feat_size=args.belief_size,
         )
         output_normal = False
+    elif "antmaze" in args.dataset_path:
+        train_loader, test_loader = utils.antmaze_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
+        full_loader = utils.antmaze_full_loader(1, args.eval_expert_file)
+        action_encoder = LinearLayer(
+            input_size=train_loader.dataset.action_size,
+            output_size=args.belief_size)
+        encoder = LinearLayer(
+            input_size=train_loader.dataset.obs_size,
+            output_size=args.belief_size)
+        decoder = GridDecoder(
+            input_size=args.belief_size,
+            action_size=train_loader.dataset.action_size,
+            feat_size=args.belief_size,
+        )
+        output_normal = True
+        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
     elif "cheetah" in args.dataset_path:
         train_loader, test_loader = utils.hil_loader(args.batch_size, args.hil_seq_size)
         full_loader = utils.cheetah_full_loader(1, args.eval_expert_file)
@@ -856,21 +872,23 @@ def main():
                     train_stats["num_skills"] = sum(num_skills)/len(num_skills)
                     LOGGER.info(log_str, *log_data)
                     # LOGGER.info("ep: {:08}, training loss: {}".format(b_idx,train_total_loss.detach().cpu()))
-                    emb_list = run_exp(model.module.state_model, full_loader, "det", device)
-                    logname = os.path.join("result_clustering", args.name, args.exp_id, f"stage1_b{b_idx}.log")
-                    os.makedirs(os.path.dirname(logname), exist_ok=True)
-                    cluster_mse = clustering_report(emb_list, logname, 3)  # Adjust n_features as needed
-                    train_stats["cluster_mse"] = cluster_mse
-                    wandb.log(train_stats, step=b_idx)
+
+                    # HACK Commented early stopping for antmaze
+                    # emb_list = run_exp(model.module.state_model, full_loader, "det", device)
+                    # logname = os.path.join("result_clustering", args.name, args.exp_id, f"stage1_b{b_idx}.log")
+                    # os.makedirs(os.path.dirname(logname), exist_ok=True)
+                    # cluster_mse = clustering_report(emb_list, logname, 3)  # Adjust n_features as needed
+                    # train_stats["cluster_mse"] = cluster_mse
+                    # wandb.log(train_stats, step=b_idx)
                 
-                    if cluster_mse<=0.0001 and sum(num_skills)/len(num_skills) < 200:
-                        exp_dir = os.path.join("experiments", args.name, args.exp_id)
-                        os.makedirs(exp_dir, exist_ok=True)
-                        torch.save(
-                            model.module.state_model, os.path.join(exp_dir, f"model-{b_idx}.ckpt")
-                        )
-                        print(f"Training has converged with cluster_mse {cluster_mse} Exiting...")
-                        sys.exit(0)
+                    # if cluster_mse<=0.0001 and sum(num_skills)/len(num_skills) < 200:
+                    #     exp_dir = os.path.join("experiments", args.name, args.exp_id)
+                    #     os.makedirs(exp_dir, exist_ok=True)
+                    #     torch.save(
+                    #         model.module.state_model, os.path.join(exp_dir, f"model-{b_idx}.ckpt")
+                    #     )
+                    #     print(f"Training has converged with cluster_mse {cluster_mse} Exiting...")
+                    #     sys.exit(0)
                         
                 np.set_printoptions(threshold=100000)
                 torch.set_printoptions(threshold=100000)

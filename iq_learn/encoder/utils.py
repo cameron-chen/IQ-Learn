@@ -10,7 +10,7 @@ import wandb
 import os
 import pickle
 # from grid_world import grid
-
+from typing import Optional, TypeVar
 FONT = ImageFont.load_default()
 
 # FONT = ImageFont.truetype(
@@ -1615,6 +1615,137 @@ def lunarlander_loader(batch_size, seq_size,
 
 def lunarlander_full_loader(batch_size, expert_file):
     full_dataset = LunarLanderDataset(partition="full", expert_file=expert_file)
+    full_loader = DataLoader(
+        dataset=full_dataset, batch_size=batch_size, shuffle=False
+    )
+    return full_loader
+
+def preprocess_d4rl_episodes_from_path(path: str, max_episode_length: int, number: Optional[int] = None, proportion: Optional[float] = None):
+    '''
+    read dataset from pickle file
+    '''
+    with open(path, 'rb') as f:
+        episodes = pickle.load(f)
+
+    n_episode = len(episodes)
+    
+    print(f'Loading dataset from {path}: {n_episode} episodes')
+
+    episode_lengths = [e['rewards'].shape[0] for e in episodes]
+    key_dims = {key: episodes[0][key].shape[-1] for key in episodes[0].keys()}
+    buffers = {key: np.zeros((n_episode, max_episode_length, key_dims[key]), dtype=np.float32) for key in episodes[0].keys()}
+
+    for idx, e in enumerate(episodes):  # put episodes into fix sized numpy arrays (for padding)
+        for key, buffer in buffers.items():
+            buffer[idx, :episode_lengths[idx]] = e[key]
+    
+    buffers['episode_lengths'] = np.array(episode_lengths)
+
+    return buffers
+
+def preprocess_gcpc_to_love_format(path: str, max_episode_length: int):
+    '''
+    Read GCPC dataset and return states and actions in LOVE-compatible format.
+    '''
+    with open(path, 'rb') as f:
+        episodes = pickle.load(f)
+
+    n_episode = len(episodes)
+    
+    print(f'Loading dataset from {path}: {n_episode} episodes')
+
+    # Extract the key dimensions for padding (optional)
+    episode_lengths = [e['rewards'].shape[0] for e in episodes]
+    
+    # Initialize lists to store states and actions
+    states = []
+    actions = []
+
+    # Loop through the episodes and collect states and actions
+    for e in episodes:
+        states.append(np.array(e['observations'], dtype=np.float32))
+        actions.append(np.array(e['actions'], dtype=np.float32))
+
+    # Return states and actions in the format expected by LOVE
+    return states, actions
+
+class AntMazeDataset(Dataset):
+    def __init__(self, partition, seq_size=700, expert_file=""):
+        mycwd = os.getcwd()
+        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder/")
+        dataset_paths = expert_file.split(",")
+        state = []
+        action = []
+        level = []
+        for idx, dataset_path in enumerate(dataset_paths):
+            state_i, action_i = preprocess_gcpc_to_love_format(dataset_path, 5000)
+            level_i = [idx for i in range(len(state_i))]
+            state.extend(state_i)
+            action.extend(action_i)
+            level.extend(level_i)
+        
+        os.chdir(mycwd) 
+        state = np.array(state, dtype='object')
+        action = np.array(action, dtype='object')
+        level = np.array(level, dtype='int')
+        self.partition = partition
+        num_heldout = 10
+        if self.partition == "train":
+            self.state = state[:-num_heldout] 
+            self.action = action[:-num_heldout]  
+            self.level = level[:-num_heldout]  
+        elif self.partition == "test":
+            self.state = state[-num_heldout:]
+            self.action = action[-num_heldout:]
+            self.level = level[:-num_heldout]  
+        else:
+            self.state = state[:]
+            self.action = action[:]
+            self.level = level[:]  
+        self.obs_size = self.state[0][0].shape[0]
+        self.action_size =  self.action[0][0].shape[0]
+        self._num_levels = len(dataset_paths)
+        self._seq_size = seq_size
+
+    @property
+    def seq_size(self):
+        return self._seq_size - 2
+
+    @property
+    def num_levels(self):
+        return self._num_levels
+    
+    def __len__(self):
+        return len(self.state)
+
+    def __getitem__(self, index):
+        max_len = self._seq_size
+        s = np.squeeze(self.state[index])[:max_len]
+        a = np.squeeze(self.action[index])[:max_len]
+        return np.stack(s).astype(np.float32), np.stack(a).astype(np.float32), self.level[index]
+
+    def open_dataset(self, dataset_path):
+        with open(dataset_path, 'rb') as f:
+            trajectories = pickle.load(f)
+        print(f"state shape: {trajectories['states'][0].shape}")
+        state = [np.array(x, dtype=type) for x in trajectories['states']]
+        action = [np.array(x, dtype=type) for x in trajectories['actions']]
+        return state, action
+
+def antmaze_loader(batch_size, seq_size, 
+                       expert_file="/home/zichang/proj/IQ-Learn/iq_learn/encoder/expert/lunarlander/LunarLander-v2_100_299r.pkl,/home/zichang/proj/IQ-Learn/iq_learn/encoder/expert/lunarlander/LunarLander-v2_100_803r.pkl,/home/zichang/proj/IQ-Learn/iq_learn/encoder/expert/lunarlander/LunarLander-v2_100_1404r.pkl"):
+    train_dataset = AntMazeDataset(partition="train", seq_size=seq_size, expert_file=expert_file)
+    test_dataset = AntMazeDataset(partition="test", seq_size=seq_size, expert_file=expert_file)
+    train_loader = DataLoader(
+        dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=False
+    )
+    test_loader = DataLoader(
+        dataset=test_dataset, batch_size=len(test_dataset), shuffle=False
+    )
+    return train_loader, test_loader
+
+def antmaze_full_loader(batch_size, expert_file):
+    full_dataset = AntMazeDataset(partition="full", expert_file=expert_file)
     full_loader = DataLoader(
         dataset=full_dataset, batch_size=batch_size, shuffle=False
     )
