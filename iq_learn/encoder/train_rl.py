@@ -921,6 +921,11 @@ def main():
                         test_stats, log_str, log_data = utils.log_test(results, None, b_idx)
                         LOGGER.info(log_str, *log_data)
                         wandb.log(test_stats, step=b_idx)
+    exp_dir = os.path.join("experiments", args.name, args.exp_id)
+    os.makedirs(exp_dir, exist_ok=True)
+    torch.save(
+        model.module.state_model, os.path.join(exp_dir, f"model-{b_idx}.ckpt")
+    )
     # offline training loss save
     # from matplotlib import pyplot as plt
     # plt.plot(train_loss_list, label='train_loss')
