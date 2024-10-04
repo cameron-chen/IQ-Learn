@@ -1673,7 +1673,7 @@ class AntMazeDataset(Dataset):
     def __init__(self, partition, seq_size=700, expert_file=""):
         mycwd = os.getcwd()
         print(f"Working in: {mycwd}")
-        if not os.path.exists("encoder"):
+        if "encoder" not in mycwd:
             newcwd = mycwd + "/encoder/"
             os.chdir(newcwd)
             print(f"Working in: {newcwd}")
