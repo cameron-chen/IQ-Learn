@@ -46,6 +46,8 @@ def evaluate(actor, env, conditions, num_episodes=10, vis=True, cond_dim=10, con
         cond = get_random_cond(cond_dim, cond_type, conditions, eval_index=eval_index, experimental=experimental)
         with eval_mode(actor):
             while not done and not terminated:
+                if "kitchen" in env.spec.id:
+                    state = state[:30] # HACK: GCPC kitchen dataset has observation of length 30
                 if cond_type=="none":
                     action = actor.choose_action(state, sample=False)
                 else:

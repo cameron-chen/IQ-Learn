@@ -2,11 +2,12 @@
 
 env:
   short_name: kitchen
-  name: FrankaKitchen-v2
+  name: kitchen-mixed-v0
   demo: antmaze-umaze-diverse-999-v2.pkl
   cond: antmaze/no_id/antmaze_999.pkl
   # learn_steps: 1e5
   # eval_interval: 1e3
+  obs_dim: 30
 
   replay_mem: 1e6
   # initial_mem: 10000

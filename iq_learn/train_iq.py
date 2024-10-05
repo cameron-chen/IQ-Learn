@@ -207,30 +207,11 @@ def main(cfg: DictConfig):
         encoder.instantiate_prob_encoder(dist_size=args.cond_dim)
         encoder.to(device)
 
-        # Define forward hook
-        # def forward_hook(module, input, output):
-        #     # print(f"Forward pass through {module}:")
-        #     if isinstance(output, tuple):
-        #         for i, out in enumerate(output):
-        #             if isinstance(out, torch.Tensor):
-        #                 # print(f"Output[{i}]: {out}")
-        #                 if torch.isnan(out).any():
-        #                     print(f"NaN detected in output[{i}] of {module}")
-        #             else:
-        #                 # print(f"Output[{i}]: {out} (not a tensor)")
-        #                 pass
-        #     elif isinstance(output, torch.Tensor):
-        #         # print(f"Output: {output}")
-        #         if torch.isnan(output).any():
-        #             print(f"Output: {output}")
-        #             print(f"NaN detected in output of {module}")
-        #     else:
-        #         # print(f"Output: {output} (not a tensor)")
-        #         pass
-
-        # # Register forward hooks
-        # for name, layer in encoder.named_modules():
-        #     layer.register_forward_hook(forward_hook)
+        # check if seq_dim is 1000:
+        with open(hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), 'rb') as f:
+            trajs = read_file(hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), f)
+            seq_dim = len(trajs['states'][0])
+            print(f"Traj sequence dim: {seq_dim}")
         
         last_layers_to_unfreeze = ['z_logit_feat', 'm_feat', 'transformer', 'compact_last', 'mu_layer','logvar_layer']
 
@@ -351,7 +332,7 @@ def main(cfg: DictConfig):
                     # print(f"Encoder saved at {save_dir}") 
                     pass # NOTE remove to allow early stopping
                     # print("Early stopping at step: ", learn_steps_bc)  
-                    # exit_save(encoder, learn_steps_bc, save_encoder_dir, expert_file, device, args)       
+                    # exit_save(encoder, learn_steps_bc, save_encoder_dir, expert_file, device, seq_dim, args)       
                     # break 
 
             # eval every n steps
@@ -373,7 +354,8 @@ def main(cfg: DictConfig):
                 emb_list = update_expert_memory(
                     encoder, 
                     hydra.utils.to_absolute_path(f'experts/{args.env.demo}'), 
-                    device)
+                    device,
+                    seq_dim=seq_dim)
                 logit_m = emb_list["logit_m"]
                 expert_memory_replay.clear()
                 expert_memory_replay.load(hydra.utils.to_absolute_path(f'experts/{args.env.demo}'),
@@ -386,13 +368,13 @@ def main(cfg: DictConfig):
                 print(f'--> New expert memory size: {expert_memory_replay.size()}')
             # save the encoder every 500 steps
             if (learn_steps_bc % args.bc_save_interval == 0 or learn_steps_bc==10) and learn_steps_bc > 0:
-                exit_save(encoder, learn_steps_bc, save_encoder_dir, expert_file, device, args)
+                exit_save(encoder, learn_steps_bc, save_encoder_dir, expert_file, device, seq_dim, args)
             # test: calculate the l2 norm between the latest latent mean and the first latent mean every 10 steps
             if learn_steps_bc == args.bc_steps:
                 learn_steps_bc += 1
                 print("Finished BC!")
                 break
-        exit_save(encoder, learn_steps_bc, save_encoder_dir, expert_file, device, args)
+        exit_save(encoder, learn_steps_bc, save_encoder_dir, expert_file, device, seq_dim, args)
         return # TODO: remove this to enable IQ-learn after bc-init
     print("Start IQ-learn")
     for epoch in count(): # n of episodes
@@ -402,6 +384,8 @@ def main(cfg: DictConfig):
         cond = get_random_cond(args.cond_dim, args.cond_type, conds)
         start_time = time.time()
         for episode_step in range(EPISODE_STEPS): # n of steps
+            if "kitchen" in args.env.name:
+                state = state[:30] # HACK kitchen GCPC dataset
             if steps < args.num_seed_steps:
                 # Seed replay buffer with random actions
                 action = env.action_space.sample()
@@ -412,6 +396,8 @@ def main(cfg: DictConfig):
                     else:
                         action = agent.choose_action((state, cond), sample=True)
             next_state, reward, done, info = env.step(action)
+            if "kitchen" in args.env.name:
+                next_state = next_state[:30] # HACK kitchen GCPC dataset
             episode_reward += reward
             steps += 1
 
@@ -518,13 +504,13 @@ def main(cfg: DictConfig):
         # logger.dump(learn_steps, save=begin_learn)
         # print('TRAIN\tEp {}\tAverage reward: {:.2f}\t'.format(epoch, np.mean(rewards_window)))
         save(agent, epoch, args, output_dir='results')
-def exit_save(encoder, learn_steps_bc, save_loc, expert_file, device, args):
+def exit_save(encoder, learn_steps_bc, save_loc, expert_file, device, seq_dim, args):
     unique_encoder_file = f"prob-encoder_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_betaB_step_{learn_steps_bc}.ckpt"
     save_dir = os.path.join(save_loc, unique_encoder_file)
     torch.save(encoder, save_dir)
     print(f"Encoder saved at {save_dir}")
 
-    new_conds = update_expert_memory(encoder, expert_file, device)
+    new_conds = update_expert_memory(encoder, expert_file, device, seq_dim=seq_dim)
     save_cond_loc = f"cond/{args.env.short_name}/stage2_result_{args.exp_id}_step{learn_steps_bc}.pkl"
     save_cond_loc = hydra.utils.to_absolute_path(save_cond_loc)
     with open(save_cond_loc, 'wb') as f:
@@ -550,8 +536,8 @@ def get_new_cond(encoder, logit_m, device, traj_idx_list):
         new_emb_list["dist_params"].append((mu, logvar))
     return new_emb_list
 
-def update_expert_memory(encoder, expert_file, device):
-    full_loader = cheetah_full_loader(1, expert_file)
+def update_expert_memory(encoder, expert_file, device, seq_dim=1000):
+    full_loader = cheetah_full_loader(1, expert_file, seq_dim=seq_dim)
     encoder.post_obs_state._output_normal = True
     encoder._output_normal = True
     seq_size = full_loader.dataset.seq_size

@@ -6,7 +6,11 @@ from agent.softq import SoftQ
 
 
 def make_agent(env, args):
-    obs_dim = env.observation_space.shape[0]
+    # there is args.env.obs_dim, give it to obs_dim
+    if hasattr(args.env, 'obs_dim'):
+        obs_dim = args.env.obs_dim
+    else:
+        obs_dim = env.observation_space.shape[0]
     cond_dim = args.cond_dim
     cond_type = args.cond_type
 

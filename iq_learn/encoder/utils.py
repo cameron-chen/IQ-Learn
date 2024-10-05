@@ -855,8 +855,8 @@ def cheetah_loader(batch_size, seq_size):
     )
     return train_loader, test_loader
 
-def cheetah_full_loader(batch_size, expert_file):
-    full_dataset = CheetahDataset(partition="full", expert_file=expert_file)
+def cheetah_full_loader(batch_size, expert_file, seq_dim=1000):
+    full_dataset = CheetahDataset(partition="full", seq_size=seq_dim, expert_file=expert_file, )
     full_loader = DataLoader(
         dataset=full_dataset, batch_size=batch_size, shuffle=False
     )
@@ -1757,7 +1757,7 @@ def antmaze_full_loader(batch_size, expert_file):
     return full_loader
 
 class KitchenDataset(Dataset):
-    def __init__(self, partition, seq_size=700, expert_file=""):
+    def __init__(self, partition, seq_size=300, expert_file=""):
         mycwd = os.getcwd()
         print(f"Working in: {mycwd}")
         if "encoder" not in mycwd:
