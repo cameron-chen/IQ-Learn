@@ -25,7 +25,7 @@ def padded(a, target_length, axis=0):
     npad[axis] = (0, pad_size)
     return np.pad(a, pad_width=npad, mode="constant", constant_values=0)
 
-def preprocess_gcpc_to_love_format(path: str, max_episode_length: int):
+def preprocess_gcpc_to_love_format(path: str, episode_num: int):
     '''
     Read GCPC dataset and return states and actions in LOVE-compatible format.
     '''
@@ -33,7 +33,7 @@ def preprocess_gcpc_to_love_format(path: str, max_episode_length: int):
         episodes = pickle.load(f)
 
     n_episode = len(episodes)
-    
+    save_n_episode = min(n_episode, episode_num)
     print(f'Loading dataset from {path}: {n_episode} episodes')
 
     # Extract the key dimensions for padding (optional)
@@ -50,12 +50,12 @@ def preprocess_gcpc_to_love_format(path: str, max_episode_length: int):
 
     pad = True # NOTE True for padding, False for no padding
     # Loop through the episodes and collect states and actions
-    for e in episodes:
+    for e in episodes[:save_n_episode]:
         # make next_observations a list of observations that have all indexes shifted +1
         next_observations = np.concatenate([e['observations'][1:], e['observations'][-1:]], axis=0)
         if pad is True:
             # pad them
-            target_len = 300
+            target_len = max(1000, e['observations'].shape[0])
             observation = padded(e['observations'], target_len)
             action = padded(e['actions'], target_len)
             next_observation = padded(next_observations, target_len)
@@ -100,7 +100,7 @@ def main():
     # make expert_location an argument
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("file", type=str, help="name of the file")
-    arg_parser.add_argument("save_dir", type=str, help="name of the save directory")
+    # arg_parser.add_argument("save_dir", type=str, help="name of the save directory")
     args = arg_parser.parse_args()
     # Example usage
     expert_file = args.file
@@ -110,28 +110,36 @@ def main():
     trajectories = open_dataset(dataset_paths[0])
     split_state = [len(traj['observations']) for traj in trajectories]
     print(f" max min and avg length of state: {max(split_state)} {min(split_state)} {np.mean(split_state)}")
+    print(f"Number of trajectories: {len(trajectories)}")
     keys = trajectories[0].keys()
     print(f"Keys in the dataset: {keys}")
-    # print each item length
-    # traj0 = trajectories[0]
-    # for key in keys:
-    #     print(f"Length of {key}: {len(traj0[0][key])}")
-    # for traj in trajectories:
-    #         # Convert the array traj['infos']['goal'] to a str for hashing
-    #     traj_goal_str = str(traj['infos/goal'][0].tolist())  # Convert to list first if it's a NumPy array
-    #     if traj_goal_str not in goal_dict:
-    #         goal_dict[traj_goal_str] = 0
-    #     else:
-    #         goal_dict[traj_goal_str] += 1
-    # print(f"Number of unique goals: {len(goal_dict)}")
     print(f"Number of trajectories: {len(trajectories)}")
     # Prepare lists to store the split data
 
+    # The current path with 'gcpc' in the argument
+    original_path = args.file
+
+    # Remove 'gcpc/' from the original path
+    modified_path = original_path.replace('gcpc/', '')
+
+    # Now you have the new save path without 'gcpc'
+    print(f"Modified path: {modified_path}")
+
+    # Example: Save two files by modifying the number dynamically
+    file_name_1 = modified_path.replace('v2', str(len(trajectories)))  # Replace v2 with 1
+    file_name_2 = modified_path.replace('v2', '30')  # Replace v2 with 2
+
+
     for idx, dataset_path in enumerate(dataset_paths):
         new_dataset = preprocess_gcpc_to_love_format(dataset_path, 5000)
-    
     # save the new dataset to save_dir
-    save_split_dataset(new_dataset, args.save_dir)
+    save_split_dataset(new_dataset, file_name_1)
+
+
+    for idx, dataset_path in enumerate(dataset_paths):
+        new_dataset = preprocess_gcpc_to_love_format(dataset_path, 30)    
+    # save the new dataset to save_dir
+    save_split_dataset(new_dataset, file_name_2)
 
 if __name__ == "__main__":
     

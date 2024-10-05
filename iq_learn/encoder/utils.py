@@ -1670,7 +1670,7 @@ def preprocess_gcpc_to_love_format(path: str, max_episode_length: int):
     return states, actions
 
 class AntMazeDataset(Dataset):
-    def __init__(self, partition, seq_size=700, expert_file=""):
+    def __init__(self, partition, seq_size=1000, expert_file=""):
         mycwd = os.getcwd()
         print(f"Working in: {mycwd}")
         if "encoder" not in mycwd:
