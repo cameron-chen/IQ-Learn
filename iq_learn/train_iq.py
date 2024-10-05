@@ -198,7 +198,7 @@ def main(cfg: DictConfig):
             )
     agent.bc_alpha = args.method.bc_alpha
     if args.method.bc_init:
-        sys.path.append('/home/zichang/proj/IQ-Learn/iq_learn/encoder')
+        sys.path.append('/common/home/users/z/zichang.ge.2023/proj/IQ-Learn/iq_learn/encoder')
         print("Current working directory: ", os.getcwd())
         exp_dir = args.exp_dir
         checkpoint = exp_dir + args.encoder
@@ -375,6 +375,8 @@ def main(cfg: DictConfig):
                 print("Finished BC!")
                 break
         exit_save(encoder, learn_steps_bc, save_encoder_dir, expert_file, device, seq_dim, args)
+        sys.path.append('/common/home/users/z/zichang.ge.2023/proj/IQ-Learn/iq_learn/')
+        print("Current working directory: ", os.getcwd())
         return # TODO: remove this to enable IQ-learn after bc-init
     print("Start IQ-learn")
     for epoch in count(): # n of episodes
