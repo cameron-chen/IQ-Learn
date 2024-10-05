@@ -511,7 +511,7 @@ def exit_save(encoder, learn_steps_bc, save_loc, expert_file, device, seq_dim, a
     print(f"Encoder saved at {save_dir}")
 
     new_conds = update_expert_memory(encoder, expert_file, device, seq_dim=seq_dim)
-    save_cond_loc = f"cond/{args.env.short_name}/stage2_result_{args.exp_id}_step{learn_steps_bc}.pkl"
+    save_cond_loc = f"cond/{args.env.short_name}/{args.env.short_name}_step{learn_steps_bc}.pkl"
     save_cond_loc = hydra.utils.to_absolute_path(save_cond_loc)
     with open(save_cond_loc, 'wb') as f:
         pickle.dump(new_conds, f)

@@ -1,8 +1,8 @@
 # @package _global_
 
 env:
-  short_name: antmaze
-  name: antmaze-umaze-v0
+  short_name: antmaze-umaze-diverse
+  name: antmaze-umaze-diverse-v0
   demo: antmaze-umaze-diverse-999-v2.pkl
   cond: antmaze/no_id/antmaze_999.pkl
   # learn_steps: 1e5
