@@ -224,6 +224,11 @@ class SAC(object):
     def evaluate_actions(self, obs, action):
         dist = self.actor(obs)
         log_prob = dist.log_prob(action).sum(dim=-1, keepdim=True)
+        if torch.isnan(log_prob).any():
+            smallest_value = 1e-6
+            action_min = action.min() + smallest_value
+            action_max = action.max() - smallest_value
+            log_prob = dist.log_prob(torch.clamp(action, action_min, action_max)).sum(dim=-1, keepdim=True)
         entropy = dist.entropy().sum(dim=-1, keepdim=True)
         # check if log_prob is nan
         if isinstance(obs, tuple):
@@ -253,6 +258,8 @@ class SAC(object):
         
         if torch.isnan(log_prob).any():
             print('!!!!!!!!!!!!!!! log_prob is nan')
+            print("Mean:", dist.mean)
+            # print("Standard Deviation:", dist.stddev)  # Ensure stddev > 0
             assert (dist.scale > 0).all(), "Scale must be positive"
             # print("Distribution parameters:", dist.mean, dist.scale)
             print("Distribution parameters:")

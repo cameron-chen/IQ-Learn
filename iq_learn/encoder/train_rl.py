@@ -296,7 +296,7 @@ def main():
         entity="zichang_team",
         name=exp_name,
         sync_tensorboard=False,
-        settings=wandb.Settings(start_method="fork"),
+        # settings=wandb.Settings(start_method="fork"),
     )
 
     LOGGER.info("EXP NAME: " + exp_name)
@@ -335,6 +335,23 @@ def main():
     elif "antmaze" in args.dataset_path:
         train_loader, test_loader = utils.antmaze_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
         full_loader = utils.antmaze_full_loader(1, args.eval_expert_file)
+        action_encoder = LinearLayer(
+            input_size=train_loader.dataset.action_size,
+            output_size=args.belief_size)
+        encoder = LinearLayer(
+            input_size=train_loader.dataset.obs_size,
+            output_size=args.belief_size)
+        decoder = GridDecoder(
+            input_size=args.belief_size,
+            action_size=train_loader.dataset.action_size,
+            feat_size=args.belief_size,
+        )
+        output_normal = True
+        os.chdir(cwd)
+        # os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
+    elif "kitchen" in args.dataset_path:
+        train_loader, test_loader = utils.kitchen_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
+        full_loader = utils.kitchen_full_loader(1, args.eval_expert_file)
         action_encoder = LinearLayer(
             input_size=train_loader.dataset.action_size,
             output_size=args.belief_size)

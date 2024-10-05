@@ -1682,7 +1682,8 @@ class AntMazeDataset(Dataset):
         action = []
         level = []
         for idx, dataset_path in enumerate(dataset_paths):
-            state_i, action_i = preprocess_gcpc_to_love_format(dataset_path, 5000)
+            # state_i, action_i = preprocess_gcpc_to_love_format(dataset_path, 5000)
+            state_i, action_i = self.open_dataset(dataset_path)
             level_i = [idx for i in range(len(state_i))]
             state.extend(state_i)
             action.extend(action_i)
@@ -1750,6 +1751,93 @@ def antmaze_loader(batch_size, seq_size,
 
 def antmaze_full_loader(batch_size, expert_file):
     full_dataset = AntMazeDataset(partition="full", expert_file=expert_file)
+    full_loader = DataLoader(
+        dataset=full_dataset, batch_size=batch_size, shuffle=False
+    )
+    return full_loader
+
+class KitchenDataset(Dataset):
+    def __init__(self, partition, seq_size=700, expert_file=""):
+        mycwd = os.getcwd()
+        print(f"Working in: {mycwd}")
+        if "encoder" not in mycwd:
+            newcwd = mycwd + "/encoder/"
+            os.chdir(newcwd)
+            print(f"Working in: {newcwd}")
+        dataset_paths = expert_file.split(",")
+        state = []
+        action = []
+        level = []
+        for idx, dataset_path in enumerate(dataset_paths):
+            # state_i, action_i = preprocess_gcpc_to_love_format(dataset_path, 5000)
+            state_i, action_i = self.open_dataset(dataset_path)
+            level_i = [idx for i in range(len(state_i))]
+            state.extend(state_i)
+            action.extend(action_i)
+            level.extend(level_i)
+        
+        os.chdir(mycwd) 
+        state = np.array(state, dtype='object')
+        action = np.array(action, dtype='object')
+        level = np.array(level, dtype='int')
+        self.partition = partition
+        num_heldout = 10
+        if self.partition == "train":
+            self.state = state[:-num_heldout] 
+            self.action = action[:-num_heldout]  
+            self.level = level[:-num_heldout]  
+        elif self.partition == "test":
+            self.state = state[-num_heldout:]
+            self.action = action[-num_heldout:]
+            self.level = level[:-num_heldout]  
+        else:
+            self.state = state[:]
+            self.action = action[:]
+            self.level = level[:]  
+        self.obs_size = self.state[0][0].shape[0]
+        self.action_size =  self.action[0][0].shape[0]
+        self._num_levels = len(dataset_paths)
+        self._seq_size = seq_size
+
+    @property
+    def seq_size(self):
+        return self._seq_size - 2
+
+    @property
+    def num_levels(self):
+        return self._num_levels
+    
+    def __len__(self):
+        return len(self.state)
+
+    def __getitem__(self, index):
+        max_len = self._seq_size
+        s = np.squeeze(self.state[index])[:max_len]
+        a = np.squeeze(self.action[index])[:max_len]
+        return np.stack(s).astype(np.float32), np.stack(a).astype(np.float32), self.level[index]
+
+    def open_dataset(self, dataset_path):
+        with open(dataset_path, 'rb') as f:
+            trajectories = pickle.load(f)
+        print(f"state shape: {trajectories['states'][0].shape}")
+        state = [np.array(x, dtype=type) for x in trajectories['states']]
+        action = [np.array(x, dtype=type) for x in trajectories['actions']]
+        return state, action
+
+def kitchen_loader(batch_size, seq_size, 
+                       expert_file="/home/zichang/proj/IQ-Learn/iq_learn/encoder/expert/lunarlander/LunarLander-v2_100_299r.pkl,/home/zichang/proj/IQ-Learn/iq_learn/encoder/expert/lunarlander/LunarLander-v2_100_803r.pkl,/home/zichang/proj/IQ-Learn/iq_learn/encoder/expert/lunarlander/LunarLander-v2_100_1404r.pkl"):
+    train_dataset = KitchenDataset(partition="train", seq_size=seq_size, expert_file=expert_file)
+    test_dataset = KitchenDataset(partition="test", seq_size=seq_size, expert_file=expert_file)
+    train_loader = DataLoader(
+        dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=False
+    )
+    test_loader = DataLoader(
+        dataset=test_dataset, batch_size=len(test_dataset), shuffle=False
+    )
+    return train_loader, test_loader
+
+def kitchen_full_loader(batch_size, expert_file):
+    full_dataset = KitchenDataset(partition="full", expert_file=expert_file)
     full_loader = DataLoader(
         dataset=full_dataset, batch_size=batch_size, shuffle=False
     )

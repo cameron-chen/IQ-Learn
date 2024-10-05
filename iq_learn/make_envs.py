@@ -8,6 +8,7 @@ from wrappers.normalize_action_wrapper import check_and_normalize_box_actions
 import envs
 import numpy as np
 import os
+import d4rl 
 # import seals
 
 # Register all custom envs

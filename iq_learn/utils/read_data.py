@@ -72,21 +72,31 @@ def main():
     with open(expert_location, 'rb') as f:
         trajs = read_file(expert_location, f)
     
-    # Calculate mean and std for each skill level
-    results = []
-    skill_levels = ['Low', 'Medium', 'High']
-    import numpy as np
-    for i in range(3):
-        skill_rewards = trajs['rewards'][i * 10:(i + 1) * 10]  # Get 10 rewards for each skill level
-        total_rewards = [sum(reward) for reward in skill_rewards]  # Sum the 1000 steps for each reward
-        mean = np.mean(total_rewards)
-        std = np.std(total_rewards)
-        results.append(f"& ${mean:.1f}\\pm{std:.1f}$ ")
+    # truncate each value length to 30:
+    for key in trajs:
+        trajs[key] = trajs[key][:30]
+    # save the truncated data to a new file
 
-    # # Print the results
-    for i, result in enumerate(results):
-        skill_level = skill_levels[i]
-        print(f"{skill_level}: {result}")
+    save_file = 'experts/antmaze/antmaze_30.pkl'
+    with open(save_file, 'wb') as f:
+        pickle.dump(trajs, f)
+    print(f"Saved the truncated data to {save_file}")
+
+    # Calculate mean and std for each skill level
+    # results = []
+    # skill_levels = ['Low', 'Medium', 'High']
+    # import numpy as np
+    # for i in range(3):
+    #     skill_rewards = trajs['rewards'][i * 10:(i + 1) * 10]  # Get 10 rewards for each skill level
+    #     total_rewards = [sum(reward) for reward in skill_rewards]  # Sum the 1000 steps for each reward
+    #     mean = np.mean(total_rewards)
+    #     std = np.std(total_rewards)
+    #     results.append(f"& ${mean:.1f}\\pm{std:.1f}$ ")
+
+    # # # Print the results
+    # for i, result in enumerate(results):
+    #     skill_level = skill_levels[i]
+    #     print(f"{skill_level}: {result}")
 
 #%% --> Print the keys of the trajs
     # print(f"Type of trajs: {type(trajs)}")

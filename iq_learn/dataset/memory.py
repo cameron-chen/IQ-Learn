@@ -71,6 +71,9 @@ class Memory(object):
         batch_action = torch.as_tensor(batch_action, dtype=torch.float, device=device)
         if batch_action.ndim == 1:
             batch_action = batch_action.unsqueeze(1)
+        # convert batch_reward to numpy array first if it is a list for faster computation
+        batch_reward = np.array(batch_reward)
+        batch_done = np.array(batch_done)
         batch_reward = torch.as_tensor(batch_reward, dtype=torch.float, device=device).unsqueeze(1)
         batch_done = torch.as_tensor(batch_done, dtype=torch.float, device=device).unsqueeze(1)
         batch_cond = torch.as_tensor(batch_cond, dtype=torch.float, device=device)

@@ -76,6 +76,14 @@ def run_exp(config, expert_file, datafile, embed_mode, cond_dim):
         full_loader = utils.lunarlander_full_loader(1, expert_file)
         hssm.post_obs_state._output_normal = True
         hssm._output_normal = True
+    elif config.get("env") == "antmaze":
+        full_loader = utils.antmaze_full_loader(1, expert_file)
+        hssm.post_obs_state._output_normal = True
+        hssm._output_normal = True
+    elif config.get("env") == "kitchen":
+        full_loader = utils.kitchen_full_loader(1, expert_file)
+        hssm.post_obs_state._output_normal = True
+        hssm._output_normal = True
     else:
         raise ValueError()
     device = "cuda:0" if torch.cuda.is_available() else "cpu"

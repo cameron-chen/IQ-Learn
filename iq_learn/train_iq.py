@@ -204,8 +204,8 @@ def main(cfg: DictConfig):
         checkpoint = exp_dir + args.encoder
         encoder = torch.load(checkpoint)
         encoder.train()
-        encoder.to(device)
         encoder.instantiate_prob_encoder(dist_size=args.cond_dim)
+        encoder.to(device)
 
         # Define forward hook
         # def forward_hook(module, input, output):
@@ -269,9 +269,15 @@ def main(cfg: DictConfig):
         
     # BC initialization
     if args.method.bc_init:
+        save_encoder_dir = exp_dir
+        expert_file = hydra.utils.to_absolute_path(f'experts/{args.env.demo}')
         agent.bc_update = types.MethodType(bc_update, agent)
         logit_m = conds["logit_m"]
         logit_array_0, m_array_0 = logit_m[0]
+        # if logit_array_0, m_array_0 is not tensor, put them to tensor device
+        # if not torch.is_tensor(logit_array_0):
+        #     logit_array_0 = torch.tensor(logit_array_0, device=device)
+        #     m_array_0 = torch.tensor(m_array_0, device=device)
         first_mu_0 = get_mu_logvar(logit_array_0, m_array_0, encoder, device)[1].detach().cpu().numpy()
         early_stopper = EarlyStopper(patience=3, min_delta=-0.2)
         for learn_steps_bc in count():
@@ -305,6 +311,7 @@ def main(cfg: DictConfig):
                 print("Force normalizing expert action to [-1, 1]")
                 expert_action = torch.clamp(expert_action, min=-1.0 + epsilon, max=1.0 - epsilon)
                 print(expert_action.min(), expert_action.max())
+
             losses = agent.bc_update(
                 expert_obs,
                 expert_action,
@@ -314,7 +321,8 @@ def main(cfg: DictConfig):
                 args.cond_type,
                 mu,
                 log_var,
-                encoder_optimizer
+                encoder_optimizer,
+                encoder
             )
 
             # for name, param in encoder.named_parameters():
@@ -337,12 +345,14 @@ def main(cfg: DictConfig):
                 logger.dump(learn_steps_bc)
                 # print (f"Step: {learn_steps_bc}, L2 Norm: {l2_norm.item()}")
                 if early_stopper.early_stop(-l2_norm.item()):  
-                    unique_encoder_file = f"prob-encoder_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_betaB_step_{learn_steps_bc}.ckpt"
-                    save_dir = os.path.join(exp_dir, unique_encoder_file)
-                    torch.save(encoder, save_dir)
-                    print(f"Encoder saved at {save_dir}") 
-                    print("Early stopping at step: ", learn_steps_bc)          
-                    break
+                    # unique_encoder_file = f"prob-encoder_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_betaB_step_{learn_steps_bc}.ckpt"
+                    # save_dir = os.path.join(exp_dir, unique_encoder_file)
+                    # torch.save(encoder, save_dir)
+                    # print(f"Encoder saved at {save_dir}") 
+                    pass # NOTE remove to allow early stopping
+                    # print("Early stopping at step: ", learn_steps_bc)  
+                    # exit_save(encoder, learn_steps_bc, save_encoder_dir, expert_file, device, args)       
+                    # break 
 
             # eval every n steps
             if learn_steps_bc % args.env.eval_interval == 0:
@@ -376,15 +386,13 @@ def main(cfg: DictConfig):
                 print(f'--> New expert memory size: {expert_memory_replay.size()}')
             # save the encoder every 500 steps
             if (learn_steps_bc % args.bc_save_interval == 0 or learn_steps_bc==10) and learn_steps_bc > 0:
-                unique_encoder_file = f"prob-encoder_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_betaB_step_{learn_steps_bc}.ckpt"
-                save_dir = os.path.join(exp_dir, unique_encoder_file)
-                torch.save(encoder, save_dir)
-                print(f"Encoder saved at {save_dir}")
+                exit_save(encoder, learn_steps_bc, save_encoder_dir, expert_file, device, args)
             # test: calculate the l2 norm between the latest latent mean and the first latent mean every 10 steps
             if learn_steps_bc == args.bc_steps:
                 learn_steps_bc += 1
                 print("Finished BC!")
                 break
+        exit_save(encoder, learn_steps_bc, save_encoder_dir, expert_file, device, args)
         return # TODO: remove this to enable IQ-learn after bc-init
     print("Start IQ-learn")
     for epoch in count(): # n of episodes
@@ -510,6 +518,18 @@ def main(cfg: DictConfig):
         # logger.dump(learn_steps, save=begin_learn)
         # print('TRAIN\tEp {}\tAverage reward: {:.2f}\t'.format(epoch, np.mean(rewards_window)))
         save(agent, epoch, args, output_dir='results')
+def exit_save(encoder, learn_steps_bc, save_loc, expert_file, device, args):
+    unique_encoder_file = f"prob-encoder_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_betaB_step_{learn_steps_bc}.ckpt"
+    save_dir = os.path.join(save_loc, unique_encoder_file)
+    torch.save(encoder, save_dir)
+    print(f"Encoder saved at {save_dir}")
+
+    new_conds = update_expert_memory(encoder, expert_file, device)
+    save_cond_loc = f"cond/{args.env.short_name}/stage2_result_{args.exp_id}_step{learn_steps_bc}.pkl"
+    save_cond_loc = hydra.utils.to_absolute_path(save_cond_loc)
+    with open(save_cond_loc, 'wb') as f:
+        pickle.dump(new_conds, f)
+    print(f"New cond file saved at: {save_cond_loc}")
 
     
 def get_mu_logvar(logit_arrays, m_arrays, encoder, device):
@@ -897,7 +917,7 @@ def iq_update(self, policy_buffer, expert_buffer, logger, step, cond_type):
             hard_update(self.critic_net, self.critic_target_net)
     return losses
 
-def bc_update(self, observation, action, condition, logger, step, cond_type, mu, log_var, encoder_optimizer):
+def bc_update(self, observation, action, condition, logger, step, cond_type, mu, log_var, encoder_optimizer, encoder):
     # SAC version
     if self.actor:
         if cond_type == "none":
@@ -912,6 +932,8 @@ def bc_update(self, observation, action, condition, logger, step, cond_type, mu,
         self.actor_optimizer.zero_grad()
         encoder_optimizer.zero_grad()
         loss.backward()
+        grad_clip_value = 1.0
+        # torch.nn.utils.clip_grad_norm_(encoder.parameters(), grad_clip_value)
         self.actor_optimizer.step()
         encoder_optimizer.step()
 
