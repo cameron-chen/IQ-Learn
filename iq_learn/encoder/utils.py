@@ -783,7 +783,11 @@ class CheetahDataset(Dataset):
     def __init__(self, partition, seq_size=1000,
                  expert_file='/home/zichang/proj/IQ-Learn/iq_learn/experts/HalfCheetah-v2_25.pkl'):
         mycwd = os.getcwd()
-        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
+        if "encoder" not in mycwd:
+            newcwd = mycwd + "/encoder/"
+            os.chdir(newcwd)
+            print(f"Working in: {newcwd}")
+        # os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
         dataset_paths = expert_file.split(",")
         # dataset_paths = [expert_file]
         state = []
