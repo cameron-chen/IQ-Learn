@@ -700,9 +700,7 @@ class HilDataset(Dataset):
     def __init__(self, partition, seq_size=1000):
         mycwd = os.getcwd()
         os.chdir("/home/zichang/proj/adapt-image-models/love/data_test")
-        dataset_paths = ['/home/zichang/proj/adapt-image-models/love/data_test/HalfCheetah-v3_150000_steps_100_trajs.pkl',
-                         '/home/zichang/proj/adapt-image-models/love/data_test/HalfCheetah-v3_250000_steps_100_trajs.pkl',
-                         '/home/zichang/proj/adapt-image-models/love/data_test/HalfCheetah-v3_450000_steps_100_trajs.pkl']
+        dataset_paths = []
         state = []
         action = []
         level = []
@@ -785,6 +783,7 @@ class CheetahDataset(Dataset):
         mycwd = os.getcwd()
         if "encoder" not in mycwd:
             newcwd = mycwd + "/encoder/"
+            newcwd = '/common/home/users/z/zichang.ge.2023/proj/IQ-Learn/iq_learn/encoder'
             os.chdir(newcwd)
             print(f"Working in: {newcwd}")
         # os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
