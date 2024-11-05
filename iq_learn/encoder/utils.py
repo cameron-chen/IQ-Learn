@@ -11,6 +11,8 @@ import os
 import pickle
 # from grid_world import grid
 from typing import Optional, TypeVar
+import sys
+
 FONT = ImageFont.load_default()
 
 # FONT = ImageFont.truetype(
@@ -589,10 +591,10 @@ def full_dataloader_toy(
 
 
 class ComPILEDataset(Dataset):
-    def __init__(self, partition):
-        import sys
+    def __init__(self, partition, expert_file=""):
         sys.path.append('grid_world')
-        trajectories = np.load("compile.npy", allow_pickle=True)
+        # trajectories = np.load("compile.npy", allow_pickle=True)
+        trajectories = np.load(expert_file, allow_pickle=True)
         self.partition = partition
         num_heldout = 100
         if self.partition == "train":
@@ -601,7 +603,9 @@ class ComPILEDataset(Dataset):
             ]  # num_train x ep length x (s, a, s_tp1)
         else:
             self.state = trajectories[-num_heldout:]
-
+        level_placeholder = 0
+        level = [level_placeholder for i in range(len(self.state))]
+        self.level = np.array(level, dtype='int')
         self.obs_size = self.state[0][0][0].shape
         # self.action_size = len(grid.Action)
 
@@ -615,12 +619,12 @@ class ComPILEDataset(Dataset):
     def __getitem__(self, index):
         traj = self.state[index]
         s, a, _ = zip(*traj)
-        return np.stack(s).astype(np.float32), np.stack(a)
+        return np.stack(s).astype(np.float32), np.stack(a), self.level[index]
 
 
-def compile_loader(batch_size):
-    train_dataset = ComPILEDataset(partition="train")
-    test_dataset = ComPILEDataset(partition="test")
+def compile_loader(batch_size, expert_file=""):
+    train_dataset = ComPILEDataset(partition="train", expert_file=expert_file)
+    test_dataset = ComPILEDataset(partition="test", expert_file=expert_file)
     train_loader = DataLoader(
         dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=False
     )
@@ -783,9 +787,10 @@ class CheetahDataset(Dataset):
         mycwd = os.getcwd()
         if "encoder" not in mycwd:
             newcwd = mycwd + "/encoder/"
-            newcwd = '/common/home/users/z/zichang.ge.2023/proj/IQ-Learn/iq_learn/encoder'
+            newcwd = '/home/zichang/proj/IQ-Learn/iq_learn/encoder' # for server2
+            # newcwd = '/common/home/users/z/zichang.ge.2023/proj/IQ-Learn/iq_learn/encoder' # for origami server
             os.chdir(newcwd)
-            print(f"Working in: {newcwd}")
+            print(f"Dataset working in: {newcwd}")
         # os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
         dataset_paths = expert_file.split(",")
         # dataset_paths = [expert_file]
@@ -1675,11 +1680,11 @@ def preprocess_gcpc_to_love_format(path: str, max_episode_length: int):
 class AntMazeDataset(Dataset):
     def __init__(self, partition, seq_size=1000, expert_file=""):
         mycwd = os.getcwd()
-        print(f"Working in: {mycwd}")
+        print(f"Dataset working in: {mycwd}")
         if "encoder" not in mycwd:
             newcwd = mycwd + "/encoder/"
             os.chdir(newcwd)
-            print(f"Working in: {newcwd}")
+            print(f"Dataset working in: {newcwd}")
         dataset_paths = expert_file.split(",")
         state = []
         action = []
@@ -1760,13 +1765,13 @@ def antmaze_full_loader(batch_size, expert_file):
     return full_loader
 
 class KitchenDataset(Dataset):
-    def __init__(self, partition, seq_size=300, expert_file=""):
+    def __init__(self, partition, seq_size=1000, expert_file=""):
         mycwd = os.getcwd()
-        print(f"Working in: {mycwd}")
+        print(f"Dataset working in: {mycwd}")
         if "encoder" not in mycwd:
             newcwd = mycwd + "/encoder/"
             os.chdir(newcwd)
-            print(f"Working in: {newcwd}")
+            print(f"Dataset working in: {newcwd}")
         dataset_paths = expert_file.split(",")
         state = []
         action = []

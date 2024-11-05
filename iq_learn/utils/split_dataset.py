@@ -61,7 +61,7 @@ def preprocess_gcpc_to_love_format(path: str, episode_num: int):
             next_observation = padded(next_observations, target_len)
             reward = padded(e['rewards'], target_len)
             done = padded(e['terminals'], target_len)
-            info = padded(e['infos'], target_len)
+            info = padded(e['infos'], target_len) # infos for kitchen and infos/goal for antmaze
             length = target_len
         else:
             # no padded
@@ -126,8 +126,8 @@ def main():
     print(f"Modified path: {modified_path}")
 
     # Example: Save two files by modifying the number dynamically
-    file_name_1 = modified_path.replace('v2', str(len(trajectories)))  # Replace v2 with 1
-    file_name_2 = modified_path.replace('v2', '30')  # Replace v2 with 2
+    file_name_1 = modified_path.replace('v0', str(len(trajectories)))  # Replace v2 with 1
+    file_name_2 = modified_path.replace('v0', '30')  # Replace v2 with 2
 
 
     for idx, dataset_path in enumerate(dataset_paths):

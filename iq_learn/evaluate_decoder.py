@@ -46,6 +46,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from tqdm import tqdm
+
+import gym
 def get_args(cfg: DictConfig):
     cfg.device = "cuda:0" if torch.cuda.is_available() else "cpu"
     cfg.hydra_base_dir = os.getcwd()
@@ -77,6 +79,11 @@ def read_file(path: str, file_handle: IO[Any]) -> Dict[str, Any]:
     return data
 
 def evaluate_indexed(agent, eval_env, conds, indexes, args):
+    from wrappers.normalize_action_wrapper import check_and_normalize_box_actions
+    from stable_baselines3.common.monitor import Monitor
+    eval_env = gym.make(args.env.name)
+    eval_env = Monitor(eval_env, "gym")
+    # eval_env = check_and_normalize_box_actions(eval_env)
     means = []
     stds = []
     all_returns = []
@@ -108,7 +115,6 @@ def main(cfg: DictConfig):
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
-    env_args = args.env
     env = make_env(args)
     eval_env = make_env(args)
     agent = make_agent(env, args)
@@ -139,26 +145,66 @@ def main(cfg: DictConfig):
 
     mean_per_level = []
     std_per_level = []
-    if "none" in args.experimental:
-        print(f"Evaluate decoder, eval.eps={args.eval.eps}")
-        means = []
-        stds = []
-        all_returns = []
-        full_indexes = range(len(conds['emb'])) 
-        for i in range(3):
-            print(f"Condition from {i*len(full_indexes)//3} to {(i+1)*len(full_indexes)//3}")
-            indexes = full_indexes[i*len(full_indexes)//3:(i+1)*len(full_indexes)//3]
-            mean, std, returns = evaluate_indexed(agent, eval_env, conds, indexes, args)
-            means.extend(mean)
-            stds.extend(std)
-            all_returns.extend(returns)
 
-            mean_returns = np.mean(returns)
-            std_returns = np.std(returns)
-            mean_per_level.append(mean_returns)
-            std_per_level.append(std_returns)
-            print(f"Mean={mean_returns}, Std={std_returns}")
-    # Convert lists to numpy arrays for easier handling
+    # Start evaluation
+    print(f"Evaluate decoder, eval.eps={args.eval.eps}")
+    means = []
+    stds = []
+    all_returns = []
+    full_indexes = range(len(conds['emb'])) 
+    for i in range(3):
+        print(f"Condition from {i*len(full_indexes)//3} to {(i+1)*len(full_indexes)//3}")
+        indexes = full_indexes[i*len(full_indexes)//3:(i+1)*len(full_indexes)//3]
+        mean, std, returns = evaluate_indexed(agent, eval_env, conds, indexes, args)
+        means.extend(mean)
+        stds.extend(std)
+        all_returns.extend(returns)
+
+        mean_returns = np.mean(returns)
+        std_returns = np.std(returns)
+        mean_per_level.append(mean_returns)
+        std_per_level.append(std_returns)
+        print(f"Mean={mean_returns}, Std={std_returns}")
+
+    # Calculate l2 norm loss between the all_returns and the original returns
+    experts = None
+    experts_location = hydra.utils.to_absolute_path(f'experts/{args.env.demo}')
+    if os.path.isfile(experts_location):
+        # Load data from single file.
+        with open(experts_location, 'rb') as f:
+            experts = read_file(experts_location, f)
+    else:
+        raise ValueError(f"Condition file {experts_location} not found")
+    true_returns = experts['rewards']
+    
+    l2_norm = []
+    # Save the l2 norm mean and std to a file
+    for index, return_list in enumerate(all_returns):
+        for i in return_list:
+            # calculate l2 norm between true_returns[index] and i
+            true_return = sum(true_returns[index])
+            l2_norm.append(np.linalg.norm(np.array(true_return) - np.array(i)))
+    l2_norm_mean = np.mean(l2_norm)
+    l2_norm_std = np.std(l2_norm)
+    print(f"l2_norm_mean={l2_norm_mean}, l2_norm_std={l2_norm_std}")
+
+    l2_dir = os.path.join(args.exp_dir, "csv", args.env.short_name)
+    if not os.path.exists(l2_dir):
+        # print(f"Please create directory {dir} first")
+        os.makedirs(l2_dir)
+        print(f"Created directory {l2_dir}")
+    else:
+        print(f"Directory {l2_dir} already exists")
+    data_l2_norm = {
+        'Mean': [l2_norm_mean],
+        'Std': [l2_norm_std]
+    }
+    df = pd.DataFrame(data_l2_norm)
+    csv_filename = os.path.join(l2_dir, f'l2_{args.exp_id}.csv') 
+    df.to_csv(csv_filename, index=False)
+    print(f"L2 norm to true rewards has been saved to '{csv_filename}'.")
+
+    # Save the mean, std, and returns to a CSV file
     means = np.array(means)
     stds = np.array(stds)
 
@@ -199,7 +245,7 @@ def main(cfg: DictConfig):
     df = pd.DataFrame(data)
     csv_filename = os.path.join(dir, f'{args.exp_id}.csv') 
     df.to_csv(csv_filename, index=False)
-    print(f"Result has been saved to '{csv_filename}'.")
+    print(f"Mean Std has been saved to '{csv_filename}'.")
     
 
 if __name__ == '__main__':

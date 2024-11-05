@@ -38,7 +38,8 @@ from wrappers.atari_wrapper import LazyFrames
 from typing import IO, Any, Dict
 import pickle
 from bc import BehaviorCloningLossCalculator
-from encoder.utils import *
+# from encoder.utils import *
+from encoder.utils import cheetah_full_loader
 from torch.optim import Adam
 import sys
 torch.autograd.set_detect_anomaly(True)
@@ -61,6 +62,7 @@ def main(cfg: DictConfig):
             if args.experimental != "none":
                 exp_name = args.env.cond
                 wandb.init(
+                    # mode="offline",
                     project="hil_iq", 
                     sync_tensorboard=True, 
                     reinit=True, 
@@ -70,6 +72,7 @@ def main(cfg: DictConfig):
             elif args.method.bc_init:
                 exp_name = args.env.cond
                 wandb.init(
+                    # mode="offline",
                     project="hil_iq", 
                     sync_tensorboard=True, 
                     reinit=True, 
@@ -80,6 +83,7 @@ def main(cfg: DictConfig):
                 level = "" if args.num_levels < 3 else f"level{args.num_levels} "
                 exp_name = f"{args.env.short_name} bc_init{args.method.bc_init} {level}actor{args.agent.actor_lr} critic{args.agent.critic_lr}"
                 wandb.init(
+                    # mode="offline",
                     project="hil_iq", 
                     sync_tensorboard=True, 
                     reinit=True, 
@@ -126,12 +130,25 @@ def main(cfg: DictConfig):
 
     agent = make_agent(env, args)
     if args.pretrain:
-        pretrain_path = hydra.utils.to_absolute_path(args.pretrain)
-        if os.path.isfile(pretrain_path):
-            print("=> loading pretrain '{}'".format(args.pretrain))
-            agent.load(pretrain_path)
+        pretrain_paths = args.pretrain
+        if len(pretrain_paths) == 2:
+            actor_path, critic_path = pretrain_paths
+            actor_path = hydra.utils.to_absolute_path(actor_path)
+            critic_path = hydra.utils.to_absolute_path(critic_path)
+
+            if os.path.isfile(actor_path) and os.path.isfile(critic_path):
+                print("=> loading pretrain '{}' and '{}'".format(actor_path, critic_path))
+                agent.load(actor_path, critic_path)
+            else:
+                print("[Attention]: One or both checkpoints not found: {} and {}".format(actor_path, critic_path))
         else:
-            print("[Attention]: Did not find checkpoint {}".format(args.pretrain))
+            # print("[Error]: Invalid number of paths provided. Expected two paths in a list.")
+            pretrain_path = hydra.utils.to_absolute_path(args.pretrain)
+            if os.path.isfile(pretrain_path):
+                print("=> loading pretrain '{}'".format(args.pretrain))
+                agent.load(pretrain_path)
+            else:
+                print("[Attention]: Did not find checkpoint {}".format(args.pretrain))
 
     # Load expert data
     conds = None
@@ -198,7 +215,8 @@ def main(cfg: DictConfig):
             )
     agent.bc_alpha = args.method.bc_alpha
     if args.method.bc_init:
-        sys.path.append('/common/home/users/z/zichang.ge.2023/proj/IQ-Learn/iq_learn/encoder')
+        # sys.path.append('/common/home/users/z/zichang.ge.2023/proj/IQ-Learn/iq_learn/encoder') # NOTE for origami server
+        sys.path.append('/home/zichang/proj/IQ-Learn/iq_learn/encoder')
         print("Current working directory: ", os.getcwd())
         exp_dir = args.exp_dir
         checkpoint = exp_dir + args.encoder
@@ -330,9 +348,9 @@ def main(cfg: DictConfig):
                     # save_dir = os.path.join(exp_dir, unique_encoder_file)
                     # torch.save(encoder, save_dir)
                     # print(f"Encoder saved at {save_dir}") 
-                    pass # NOTE remove to allow early stopping
-                    # print("Early stopping at step: ", learn_steps_bc)  
-                    # exit_save(encoder, learn_steps_bc, save_encoder_dir, expert_file, device, seq_dim, args)       
+                    # pass # NOTE remove to allow early stopping
+                    print("Early stopping at step: ", learn_steps_bc)  
+                    exit_save(encoder, learn_steps_bc, save_encoder_dir, expert_file, device, seq_dim, args)       
                     # break 
 
             # eval every n steps
@@ -379,6 +397,7 @@ def main(cfg: DictConfig):
         print("Current working directory: ", os.getcwd())
         return # TODO: remove this to enable IQ-learn after bc-init
     print("Start IQ-learn")
+    experiment_time = time.time()
     for epoch in count(): # n of episodes
         state = env.reset()
         episode_reward = 0
@@ -471,8 +490,8 @@ def main(cfg: DictConfig):
                         else:
                             print(f"Directory {result_last_dir} already exists")
                         # name the loc with timestamp
-                        ts_str = datetime.datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d_%H-%M-%S")
-                        save_loc = os.path.join(result_last_dir, f"{ts_str}")
+                        ts_str = datetime.datetime.fromtimestamp(experiment_time).strftime("%Y-%m-%d_%H-%M-%S")
+                        save_loc = os.path.join(result_last_dir, f"{ts_str}_last")
 
                         agent.save(save_loc)
                         print(f"Saved model at {save_loc}")    
@@ -480,7 +499,23 @@ def main(cfg: DictConfig):
                     print('Finished!')  
                     wandb.finish()
                     return
+                if learn_steps % 500000 == 0:
+                    # Save the last model
+                    if args.save_last:
+                        exp_dir = args.exp_dir
+                        result_last_dir = os.path.join(exp_dir, "result_last")
 
+                        if not os.path.exists(result_last_dir):
+                            os.makedirs(result_last_dir)
+                            print(f"Created directory {result_last_dir}")
+                        else:
+                            print(f"Directory {result_last_dir} already exists")
+                        # name the loc with timestamp
+                        ts_str = datetime.datetime.fromtimestamp(experiment_time).strftime("%Y-%m-%d_%H-%M-%S")
+                        save_loc = os.path.join(result_last_dir, f"{ts_str}")
+
+                        agent.save(save_loc)
+                        print(f"Saved model at {save_loc}")    
                     
 
                 ######
@@ -506,6 +541,13 @@ def main(cfg: DictConfig):
         # logger.dump(learn_steps, save=begin_learn)
         # print('TRAIN\tEp {}\tAverage reward: {:.2f}\t'.format(epoch, np.mean(rewards_window)))
         save(agent, epoch, args, output_dir='results')
+
+        used_time = time.time() - start_time
+        # Convert to hours, minutes, seconds
+        hours, rem = divmod(used_time, 3600)
+        minutes, seconds = divmod(rem, 60)
+        # Print in a readable format
+        print(f"Epoch {epoch} Time: {int(hours)}h {int(minutes)}m {seconds:.2f}s")
 def exit_save(encoder, learn_steps_bc, save_loc, expert_file, device, seq_dim, args):
     unique_encoder_file = f"prob-encoder_dim{args.cond_dim}_kld_alpha{args.method.kld_alpha}_betaB_step_{learn_steps_bc}.ckpt"
     save_dir = os.path.join(save_loc, unique_encoder_file)
@@ -513,7 +555,7 @@ def exit_save(encoder, learn_steps_bc, save_loc, expert_file, device, seq_dim, a
     print(f"Encoder saved at {save_dir}")
 
     new_conds = update_expert_memory(encoder, expert_file, device, seq_dim=seq_dim)
-    save_cond_loc = f"cond/{args.env.short_name}/{args.env.short_name}_step{learn_steps_bc}.pkl"
+    save_cond_loc = f"cond/{args.env.short_name}/{args.env.short_name}_{args.encoder}_step{learn_steps_bc}.pkl"
     save_cond_loc = hydra.utils.to_absolute_path(save_cond_loc)
     with open(save_cond_loc, 'wb') as f:
         pickle.dump(new_conds, f)

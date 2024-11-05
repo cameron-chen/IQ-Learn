@@ -31,6 +31,8 @@ LOGGER = logging.getLogger(__name__)
 
 
 def run_exp(config, expert_file, datafile, embed_mode, cond_dim):
+    import sys
+    sys.path.append('/home/zichang/proj/IQ-Learn/iq_learn')
     hssm = torch.load(config.get("checkpoint")).cpu()
     hssm._use_min_length_boundary_mask = True
     hssm.eval()
@@ -105,6 +107,10 @@ def run_exp(config, expert_file, datafile, embed_mode, cond_dim):
             results = hssm(obs_list, action_list, seq_size, init_size)
             if embed_mode == "det": # deterministic encoding
                 emb_list["emb"].extend(results[-3]) 
+            elif embed_mode == "z_logit": # logit_list_t_tensor: 1000, 10
+                embedding = np.array([[tensor.cpu().detach().numpy() for tensor in sublist] for sublist in results[-5]])
+                embedding = np.mean(embedding, axis=1)
+                emb_list["emb"].extend(embedding)
             else:
                 mean, std = hssm.get_dist_params()
                 if embed_mode == "mean": # mean as embedding 
@@ -238,21 +244,32 @@ def pca(emb_list, exp_name, n_features, env_name, exp_id):
     print('Explained variation per principal component: {}'.format(pca.explained_variance_ratio_))
 
     plt.figure()
-    plt.figure(figsize=(10,10))
-    plt.xticks(fontsize=12)
-    plt.yticks(fontsize=14)
-    plt.xlabel('Principal Component - 1',fontsize=20)
-    plt.ylabel('Principal Component - 2',fontsize=20)
-    plt.title(f"Principal Component Analysis of {exp_name}",fontsize=20)
-    targets = [0, 1, 2]
-    colors = ['r', 'g', 'b']
+    plt.figure(figsize=(18,18))
+    plt.xticks(fontsize=40)
+    plt.yticks(fontsize=40)
+    plt.xlabel('Principal Component - 1',fontsize=50)
+    plt.ylabel('Principal Component - 2',fontsize=50)
+    # plt.title(f"Principal Component Analysis of {env_name}",fontsize=50)
+    # plt.title("Hopper",fontsize=50)
+    # plt.title(f"Walker2D",fontsize=50)
+    plt.title("Half Cheetah",fontsize=50)
+
+    targets = [0,1,2]
+    colors = [(180/255, 180/255, 73/255), (60/255, 137/255, 138/255),(223/255, 126/255, 79/255)]
     finalDf = pd.concat([principal_Df, pd.Series(emb_list['level'], name='level')], axis = 1)
     for target, color in zip(targets,colors):
         indicesToKeep = finalDf['level'] == target
         plt.scatter(finalDf.loc[indicesToKeep, 'principal component 1']
-                , finalDf.loc[indicesToKeep, 'principal component 2'], c = color, s = 30)
-
-    plt.legend(targets,prop={'size': 15})
+                , finalDf.loc[indicesToKeep, 'principal component 2'], c = color, s = 200)
+    # Shrink current axis's height by 10% on the bottom
+    ax = plt.subplot(111)
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0 + box.height * 0.1,
+                    box.width, box.height * 0.9])
+    legend = ['Low','Medium', 'Expert']
+    # plt.legend(legend,prop={'size': 15})
+    plt.legend(legend,loc='upper center', bbox_to_anchor=(0.5, -0.1),
+          fancybox=True, shadow=True, ncol=5, prop={'size': 50})
     plt.show()
     datadir = f"plot/{env_name}/{exp_id}"
     if not os.path.exists(datadir):
@@ -273,21 +290,34 @@ def tSNE(emb_list, exp_name, n_features, env_name, exp_id):
     principal_Df = pd.DataFrame(data = XX_embedded
              , columns = ['component 1', 'component 2'])
     plt.figure()
-    plt.figure(figsize=(10,10))
-    plt.xticks(fontsize=12)
-    plt.yticks(fontsize=14)
-    plt.xlabel('Component - 1',fontsize=20)
-    plt.ylabel('Component - 2',fontsize=20)
-    plt.title(f"tSNE of {exp_name}",fontsize=20)
-    targets = [0, 1, 2]
-    colors = ['r', 'g', 'b']
+    plt.figure(figsize=(18,18))
+    plt.xticks(fontsize=40)
+    plt.yticks(fontsize=40)
+    plt.xlabel('Component - 1',fontsize=50)
+    plt.ylabel('Component - 2',fontsize=50)
+    # plt.title(f"tSNE",fontsize=20)
+    # plt.title(f"tSNE of {env_name}",fontsize=20)
+    # plt.title(f"Hopper",fontsize=50)
+    # plt.title(f"Walker2D",fontsize=50)
+    plt.title(f"Half Cheetah",fontsize=50)
+    
+
+    targets = [0,1,2]
+    colors = [(180/255, 180/255, 73/255), (60/255, 137/255, 138/255),(223/255, 126/255, 79/255)]
     finalDf = pd.concat([principal_Df, pd.Series(emb_list['level'], name='level')], axis = 1)
     for target, color in zip(targets,colors):
         indicesToKeep = finalDf['level'] == target
         plt.scatter(finalDf.loc[indicesToKeep, 'component 1']
-                , finalDf.loc[indicesToKeep, 'component 2'], c = color, s = 30)
-
-    plt.legend(targets,prop={'size': 15})
+                , finalDf.loc[indicesToKeep, 'component 2'], c = color, s = 200)
+    # Shrink current axis's height by 10% on the bottom
+    ax = plt.subplot(111)
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0 + box.height * 0.1,
+                    box.width, box.height * 0.9])
+    legend = ['Low','Medium', 'Expert']
+    # plt.legend(legend,prop={'size': 15})
+    plt.legend(legend,loc='upper center', bbox_to_anchor=(0.5, -0.1),
+          fancybox=True, shadow=True, ncol=5, prop={'size': 50})
     plt.show()
     datadir = f"plot/{env_name}/{exp_id}"
     if not os.path.exists(datadir):
@@ -439,7 +469,7 @@ def main():
     arg_parser.add_argument("--obs-std", type=float, default=1.0)
     arg_parser.add_argument("--batchsize", type=int, default=8)
     arg_parser.add_argument("--n_features", type=int, default=3)
-    arg_parser.add_argument("--embed_mode", type=str, default="det", help="det, mean, dummy or prob", choices=["det", "mean", "dummy", "prob"])
+    arg_parser.add_argument("--embed_mode", type=str, default="det", help="det, mean, dummy or prob", choices=["det", "mean", "dummy", "prob", "z_logit"])
     arg_parser.add_argument("--exp_id", type=str, default="no_id", help="experiment id for saving")
     arg_parser.add_argument("--cond_dim", type=int, default=10, help="condition dimension")
     args = arg_parser.parse_args()

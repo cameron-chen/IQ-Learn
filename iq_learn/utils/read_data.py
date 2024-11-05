@@ -63,24 +63,84 @@ def evolution():
 
 
 def main():
+    import numpy as np
     # make expert_location an argument
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("file", type=str, help="name of the file")
     args = arg_parser.parse_args()
     expert_location = args.file
-    # expert_location = 'experts/LunarLander-v2_100_230r.pkl'
+    print(f"Reading file {expert_location}")
     with open(expert_location, 'rb') as f:
         trajs = read_file(expert_location, f)
     
-    # truncate each value length to 30:
-    for key in trajs:
-        trajs[key] = trajs[key][:30]
-    # save the truncated data to a new file
+    print(trajs.keys())
+    
 
-    save_file = 'experts/antmaze/antmaze_30.pkl'
-    with open(save_file, 'wb') as f:
-        pickle.dump(trajs, f)
-    print(f"Saved the truncated data to {save_file}")
+#%% --> Print the mean std of rewards for [0:10][10:20][20:30]
+    # print the mean std of rewards for [0:10][10:20][20:30]
+    # with open(file, 'rb') as f:
+    #     trajs = read_file(file, f)
+    # rewards.extend(trajs['rewards'])
+    # rewards = []
+    # for file in expert_location.split(','):
+    #     with open(file, 'rb') as f:
+    #         trajs = read_file(file, f)
+    #     rewards.extend(trajs['rewards'])
+    # for i in range(3):
+    #     temp = rewards[i * 100:(i + 1) * 100]
+    #     total_rewards = [sum(reward) for reward in temp]
+    #     avg = np.mean(total_rewards)
+    #     std = np.std(total_rewards)
+    #     print(f"Skill level {i + 1}: {avg:.1f}±{std:.1f}")
+    #     print(f"Latex format: ${avg:.1f} {{\\text{{\scriptsize $\pm {std:.1f}$}}}}$")
+
+    
+    # # print the keys of the trajs
+    # print(f"Keys of trajs: {trajs.keys()}")
+    
+    # # print the rewards when 1=dones for each traj
+    # dones = trajs['dones']
+    # rewards = trajs['rewards']
+    # for i in [1,10,20]:
+    #     for j in range(len(dones[i])):
+    #         if dones[i][j] == 1:
+    #             print(f"Traj {i} has reward {rewards[i][j]}")
+    
+    # make the trajs['emb'] 's every value to 0
+#%% --> Print the keys of the trajs
+    # new = []
+    # for i in range(100):
+    #     new.append(np.zeros(trajs['emb'][0].shape))
+    # trajs['emb'] = new
+    # print(len(trajs['emb']))
+    # # save the modified data to a new file
+    # save_file = 'cond/kitchen/no_id/identical_cond.pkl'
+    # with open(save_file, 'wb') as f:
+    #     pickle.dump(trajs, f)
+
+    # # print the max min mean of returns
+    # returns = [sum(i) for i in trajs["rewards"]]
+    # print(f"Cumulated return max mean min: {max(returns)} {np.mean(returns)} {min(returns)}")
+
+    # max_returns = [max(i) for i in trajs["rewards"]]
+    # print(f"Max reward max mean min: {max(max_returns)} {np.mean(max_returns)} {min(max_returns)}")
+    # # calculate the number of different values in max_returns
+    # unique_values = np.unique(max_returns)
+    # print(f"Number of unique values in max_returns: {len(unique_values)}")
+    # # count the number of occurences of each unique value
+    # occurences = {value: max_returns.count(value) for value in unique_values}
+    # print(f"Occurences of each unique value in max_returns: {occurences}")
+    # return
+
+    # # truncate each value length to 30:
+    # for key in trajs:
+    #     trajs[key] = trajs[key][:30]
+    # # save the truncated data to a new file
+
+    # save_file = 'experts/kitchen/kitchen_30.pkl'
+    # with open(save_file, 'wb') as f:
+    #     pickle.dump(trajs, f)
+    # print(f"Saved the truncated data to {save_file}")
 
     # Calculate mean and std for each skill level
     # results = []
@@ -115,39 +175,163 @@ def main():
 #%% --> Compute distance between embeddings
     from scipy.stats import wasserstein_distance
     import numpy as np
-
+    import numpy as np
+    import ot
     # Assume trajs["emb"] is a numpy array with shape (30, 10), where the first 10 rows are for skill level 1,
     # the next 10 rows are for skill level 2, and the last 10 rows are for skill level 3.
 
     # Split the embeddings based on skill levels
-    skill_level_1 = trajs["emb"][:10]  # First 10 embeddings
-    skill_level_2 = trajs["emb"][10:20]  # Next 10 embeddings
-    skill_level_3 = trajs["emb"][20:30]  # Last 10 embeddings
+    skill_level_1 = trajs["emb"][:20]  # First 10 embeddings
+    skill_level_2 = trajs["emb"][100:120]  # Next 10 embeddings
+    skill_level_3 = trajs["emb"][200:220]  # Last 10 embeddings
+    vectors = [skill_level_1, skill_level_2, skill_level_3]
+    print("\na: (10, 10) 10 trajectories embeddings, each of dim 10")
+    print("\n Measure between levels")
+    dist_between_levels = []
+    for level in range(3):
 
-    # Compute the Wasserstein distance between the distributions of different skill levels
-    dist_1_2 = [wasserstein_distance(skill_level_1[:, i], skill_level_2[:, i]) for i in range(skill_level_1.shape[1])]
-    dist_1_3 = [wasserstein_distance(skill_level_1[:, i], skill_level_3[:, i]) for i in range(skill_level_1.shape[1])]
-    dist_2_3 = [wasserstein_distance(skill_level_2[:, i], skill_level_3[:, i]) for i in range(skill_level_1.shape[1])]
+        n = 50  # nb samples
 
-    # Average the distances across all dimensions
-    average_dist_1_2 = np.mean(dist_1_2)
-    average_dist_1_3 = np.mean(dist_1_3)
-    average_dist_2_3 = np.mean(dist_2_3)
+        # mu_s = np.array([0, 0])
+        # cov_s = np.array([[1, 0], [0, 1]])
 
-    print("Wasserstein Distance between skill level 1 and 2:", average_dist_1_2)
-    print("Wasserstein Distance between skill level 1 and 3:", average_dist_1_3)
-    print("Wasserstein Distance between skill level 2 and 3:", average_dist_2_3)
+        # mu_t = np.array([4, 4])
+        # cov_t = np.array([[1, -.8], [-.8, 1]])
+
+        # xs = ot.datasets.make_2D_samples_gauss(n, mu_s, cov_s)
+        # xt = ot.datasets.make_2D_samples_gauss(n, mu_t, cov_t)
+        xs = vectors[(level)%3][:10]
+        xt = vectors[(level+1)%3][:10]
+
+        # xs = vectors[(level)%3][:5]
+        # xt = vectors[(level)%3][5:]
+
+        a, b = np.ones((n,)) / n, np.ones((n,)) / n  # uniform distribution on samples
+
+        # loss matrix
+        M = ot.dist(xs, xt)
+
+        # EMD
+        Wd = ot.emd2(a, b, M)
+
+        first_level = (level)%3
+        second_level = (level+1)%3
+        # print(f'xs: {xs.shape}, xt: {xt.shape}, Wd: {Wd}')
+        print(f'Distance between skill level {first_level} and {second_level}: {Wd:.2f}')
+        dist_between_levels.append(Wd)
+
+    print("\n Measure within level")
+    dist_within_levels = []
+    for level in range(3):
+
+        n = 50  
+
+        xs = vectors[(level)%3][:10]
+        xt = vectors[(level)%3][10:20]
+
+        a, b = np.ones((n,)) / n, np.ones((n,)) / n  # uniform distribution on samples
+
+        # loss matrix
+        M = ot.dist(xs, xt)
+
+        # EMD
+        Wd = ot.emd2(a, b, M)
+
+        first_level = (level)%3
+        second_level = (level+1)%3
+        # print(f'xs: {xs.shape}, xt: {xt.shape}, Wd: {Wd}')
+        print(f'Distance within skill level {first_level}: {Wd:.2f}')
+        dist_within_levels.append(Wd)
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    # Sample confusion matrix data (3x3)
+    confusion_matrix = np.array([[dist_within_levels[0], 0, 0],
+                                [dist_between_levels[0], dist_within_levels[1], 0],
+                                [dist_between_levels[2], dist_between_levels[1], dist_within_levels[2]]])
+
+    # Create a mask for the upper triangle
+    mask = np.triu(np.ones_like(confusion_matrix, dtype=bool), k=1)  # k=1 ignores diagonal
+
+    # Set up the matplotlib figure
+    plt.figure(figsize=(8, 7))
+    labels = ['Low', 'Medium', 'Expert']
+    fontsize = 20
+    # Draw the heatmap
+    heatmap = sns.heatmap(confusion_matrix, annot=True, fmt=".2f", cmap='OrRd', mask=mask,
+            cbar=True, linewidths=0.5, vmin=0, vmax=10, xticklabels=labels, yticklabels=labels, annot_kws={"size": fontsize})
+
+    # Add titles and labels
+    # Add title and adjust title font size
+    plt.title('Walker2D', fontsize=fontsize)  # Set title font size here
+
+    # Set x and y axis labels with specific font size
+    # plt.xlabel('Ability Level', fontsize=fontsize)  # Optional: Add this line if you need an x-label
+    # plt.ylabel('Ability Level', fontsize=fontsize)  # Optional: Add this line if you need a y-label
+    # Set the font size for ticks
+    plt.tick_params(axis='both', labelsize=fontsize)  # Set the ticks font size
+    # Adjust the color bar properties
+    colorbar = heatmap.collections[0].colorbar  # Access the color bar
+    colorbar.ax.tick_params(labelsize=fontsize)  # Set the ticks font size for the color bar
+    # colorbar.set_label('Legend', fontsize=fontsize)  # Set the color bar label and font size
+    # plt.xlabel('Ability Level')
+    # plt.ylabel('Ability Level')
+
+    # # Adjust axes limits to create a staircase effect
+    # plt.xlim(-0.5, 2.5)
+    # plt.ylim(2.5, -0.5)
+
+    # Show the plot
+    plt.show()
+    # savepic = 'utils/policy_dif/hopper_confusion_matrix.png'
+    savepic = 'utils/policy_dif/walker_confusion_matrix.png'
+    # savepic = 'utils/policy_dif/cheetah_confusion_matrix.png'
+
+    plt.savefig(savepic)
+    print(f"Saved to {savepic}")
+
+#%% --> Demos Deprecated policy difference
+
+    # print("\nMeasure between each vector: a[i,:] and b[i,:]")
+    # # Compute the Wasserstein distance between the distributions of different skill levels
+    # for level in range(3):
+    #     dists = []
+    #     for i in range(10):
+    #         for j in range(10):
+    #             dists.append(wasserstein_distance(vectors[level][i], vectors[(level+1)%3][j]))
+    #     avg_dist = np.mean(dists)
+    #     first_level = (level+1)%4
+    #     second_level = (level+2)%4
+    #     print(f"Distance between skill level {first_level} and {second_level}: {avg_dist:.2f}")
+
+    # # measure for [:,i]    
+    # print("\nMeasure for each dimension: a[:,i] and b[:,i]")
+    # dist_1_2 = [wasserstein_distance(skill_level_1[:, i], skill_level_2[:, i]) for i in range(skill_level_1.shape[1])]
+    # dist_1_3 = [wasserstein_distance(skill_level_1[:, i], skill_level_3[:, i]) for i in range(skill_level_1.shape[1])]
+    # dist_2_3 = [wasserstein_distance(skill_level_2[:, i], skill_level_3[:, i]) for i in range(skill_level_1.shape[1])]
+
+    # # Average the distances across all dimensions
+    # average_dist_1_2 = np.mean(dist_1_2)
+    # average_dist_1_3 = np.mean(dist_1_3)
+    # average_dist_2_3 = np.mean(dist_2_3)
+
+    # print(f"Distance between skill level 1 and 2: {average_dist_1_2:.2f}", )
+    # print(f"Distance between skill level 2 and 3: {average_dist_2_3:.2f}", )
+    # print(f"Distance between skill level 3 and 1: {average_dist_1_3:.2f}", )
+    
 
 
 # with open('experts/CartPole-v1_1000.pkl', 'rb') as f:
 #     data = pickle.load(f)
 #%% --> Demos
     # check the lengths for official data
-    lengths = [len(i) for i in trajs["emb"]]
-    print('len', len(trajs["emb"]))
+    # lengths = [len(i) for i in trajs["emb"]]
+    # print('len', len(trajs["emb"]))
     
-    emb = trajs["emb"]
-    new_emb = []
+    # emb = trajs["emb"]
+    # new_emb = []
     # for i in range(0, len(emb), 2):
     #     new_emb.append(emb[i])
     # print('new len:', len(new_emb))

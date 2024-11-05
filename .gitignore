@@ -149,6 +149,9 @@ iq_learn/test
 *.csv
 *_actor
 *_critic
+*.tar.gz
+*.npy
+*.pdf
 
 iq_learn/scripts
 iq_learn/encoder/experiments

@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 import os
 os.environ['DISPLAY'] = ':1'
@@ -307,7 +307,7 @@ def main():
     cwd = os.getcwd()
     # load dataset
     if "compile" in args.dataset_path:
-        train_loader, test_loader = utils.compile_loader(args.batch_size)
+        train_loader, test_loader = utils.compile_loader(args.batch_size, args.expert_file)
         action_encoder = GridActionEncoder(
             action_size=train_loader.dataset.action_size,
             embedding_size=args.belief_size,
@@ -565,7 +565,8 @@ def main():
 
     # test data
     # if args.dataset_path not in ["cheetah","cartpole","lunar","hopper"]:
-    if False: # TODO: improve logic
+    # if args.dataset_path in ['compile', 'world3d']: # TODO: improve logic
+    if False:
         pre_test_full_state_list, pre_test_full_action_list = next(iter(test_loader))
         pre_test_full_state_list = pre_test_full_state_list.to(device)
         pre_test_full_action_list = pre_test_full_action_list.to(device)
@@ -877,7 +878,7 @@ def main():
                 train_total_loss.backward()
                 if args.grad_clip > 0.0:
                     grad_norm = nn.utils.clip_grad_norm_(
-                        model.module.parameters(), args.grad_clip, error_if_nonfinite=True)
+                        model.module.parameters(), args.grad_clip)
                 optimizer.step()
 
                 # get num of skills in traj
@@ -893,21 +894,21 @@ def main():
                     # LOGGER.info("ep: {:08}, training loss: {}".format(b_idx,train_total_loss.detach().cpu()))
 
                     # HACK Commented early stopping for antmaze
-                    # emb_list = run_exp(model.module.state_model, full_loader, "det", device)
-                    # logname = os.path.join("result_clustering", args.name, args.exp_id, f"stage1_b{b_idx}.log")
-                    # os.makedirs(os.path.dirname(logname), exist_ok=True)
-                    # cluster_mse = clustering_report(emb_list, logname, 3)  # Adjust n_features as needed
-                    # train_stats["cluster_mse"] = cluster_mse
-                    # wandb.log(train_stats, step=b_idx)
+                    emb_list = run_exp(model.module.state_model, full_loader, "det", device)
+                    logname = os.path.join("result_clustering", args.name, args.exp_id, f"stage1_b{b_idx}.log")
+                    os.makedirs(os.path.dirname(logname), exist_ok=True)
+                    cluster_mse = clustering_report(emb_list, logname, 3)  # Adjust n_features as needed
+                    train_stats["cluster_mse"] = cluster_mse
+                    wandb.log(train_stats, step=b_idx)
                 
-                    # if cluster_mse<=0.0001 and sum(num_skills)/len(num_skills) < 200:
-                    #     exp_dir = os.path.join("experiments", args.name, args.exp_id)
-                    #     os.makedirs(exp_dir, exist_ok=True)
-                    #     torch.save(
-                    #         model.module.state_model, os.path.join(exp_dir, f"model-{b_idx}.ckpt")
-                    #     )
-                    #     print(f"Training has converged with cluster_mse {cluster_mse} Exiting...")
-                    #     sys.exit(0)
+                    if cluster_mse<=0.002 and sum(num_skills)/len(num_skills) < 200: # clustering_mse == 0.002 is about 1 misclassification in 30 samples
+                        exp_dir = os.path.join("experiments", args.name, args.exp_id)
+                        os.makedirs(exp_dir, exist_ok=True)
+                        torch.save(
+                            model.module.state_model, os.path.join(exp_dir, f"model-{b_idx}.ckpt")
+                        )
+                        print(f"Training has converged with cluster_mse {cluster_mse} Exiting...")
+                        # sys.exit(0)
                         
                 np.set_printoptions(threshold=100000)
                 torch.set_printoptions(threshold=100000)

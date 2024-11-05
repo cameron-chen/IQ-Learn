@@ -169,6 +169,7 @@ class HierarchicalStateSpaceModel(nn.Module):
     def boundary_sampler(self, log_alpha):
         # sample and return corresponding logit
         if self.training:
+        # if False:
             log_sample_alpha = gumbel_sampling(log_alpha=log_alpha, temp=self.mask_beta)
         else:
             log_sample_alpha = log_alpha / self.mask_beta
@@ -302,6 +303,14 @@ class HierarchicalStateSpaceModel(nn.Module):
         # print(f"squeezed enc_obs_list shape: {enc_obs_list.shape}")        # Expected: [B, 1000, D]
         # print(f"squeezed shifted_enc_actions shape: {shifted_enc_actions.shape}")  # Expected: [B, 1000, 1]
 
+        # check if the dimensions are (B, S, D)
+        if enc_obs_list.dim() > 3:
+            enc_obs_list = enc_obs_list.squeeze()
+        if enc_action_list.dim() > 3:
+            enc_action_list = enc_action_list.squeeze()
+        if shifted_enc_actions.dim() > 3:
+            shifted_enc_actions = shifted_enc_actions.squeeze()
+            
         enc_combine_obs_action_list = self.combine_action_obs(
             torch.cat((enc_action_list, enc_obs_list), -1)
         )
@@ -705,11 +714,11 @@ class HierarchicalStateSpaceModel(nn.Module):
             selected_option,
             onehot_z_list,
             vq_loss_list,
-            logit_list_t_tensor,
+            logit_list_t_tensor, # z_logit list 1000, 10
             m_count_list,
-            emb_list,
+            emb_list, # deterministic traj embedding 10
             unique_z_list,
-            z_list_t
+            z_list_t # one hot z list
         ]
     
     # def get_dist(self):

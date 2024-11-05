@@ -19,7 +19,7 @@ from utils.utils import (average_dicts, eval_mode, evaluate,
                          get_concat_samples, hard_update, soft_update)
 from typing import IO, Any, Dict
 import pickle
-from render_browser import render_browser
+# from render_browser import render_browser
 import time
 
 def get_args(cfg: DictConfig):
@@ -149,15 +149,15 @@ def main(cfg: DictConfig):
         low = [f"{x:.2f}" for x in conds["emb"][0]]
         print(f"(Low):{low}")
         print("\n")
-        dims = [9]
+        dims = [0]
         for dim in dims:
             print(f"Perturbing dimension {dim}:")
-            values = [-2.6,-2.7,-2.8,-2.9]
+            values = [-1,-0.5,0.5,1]
             for perturb_value in values:
                 video_folder = f'/home/zichang/proj/IQ-Learn/iq_learn/video/{args.env.short_name}'
                 eval_env = make_env(args, render=True, video_folder=video_folder, video_name=f"perturb_dim{dim}_val{perturb_value}")
                 perturb_condition = condition.copy()
-                perturb_condition[dim] = perturb_value
+                perturb_condition[dim] = perturb_condition[dim]+perturb_value
                 # each dim to :2f for printing
                 print_condition = [f"{x:.2f}" for x in perturb_condition]
                 # perturb_condition = condition # todo remove

@@ -155,6 +155,7 @@ def evaluate_return(model, iterator, criterion, device, mean, std):
 
             y_pred, _ = model(x)
             y_pred = y_pred * std + mean
+            y_pred = torch.clamp(y_pred, min=0, max=20000)
             y = y
             loss = criterion(y_pred, y)
             # y_pred = y_pred.detach().cpu().numpy() * std + mean
@@ -237,25 +238,26 @@ def get_predictions(model, iterator, device):
 
     return images, labels, probs
 
-def plot_confusion_matrix(labels, pred_labels, exp_name):
+def plot_confusion_matrix(labels, pred_labels, exp_name, args):
 
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(1, 1, 1)
     cm = metrics.confusion_matrix(labels, pred_labels)
     cm = metrics.ConfusionMatrixDisplay(cm, display_labels=range(3))
     cm.plot(values_format='d', cmap='Blues', ax=ax)
-    datadir = "plot/prediction"
+    # datadir = "plot/prediction"
+    datadir = os.path.join("plot/prediction", args.datadir)
     savepic = os.path.join(datadir, f"{exp_name}_confusion.png")
     plt.savefig(savepic)
     print("Plot saved at {}".format(savepic))
 
-def plot_loss(train_loss_list, name):
+def plot_loss(train_loss_list, name, args):
     from matplotlib import pyplot as plt
     plt.figure()
     plt.plot(train_loss_list, label=name)
     plt.legend()
     plt.show()
-    savefile = os.path.join("plot/prediction", name + ".png")
+    savefile = os.path.join("plot/prediction", args.datadir, name + ".png")
     plt.savefig(savefile)
 
 # normalize train and test separately
@@ -285,7 +287,7 @@ def normalizebyi(data, index, dim=0, mean=None, std=None, type="train"):
 
 def return_dataset(args):
     print(f"Fetching dataset for return...")
-    datadir = "data"
+    datadir = os.path.join("data", args.datadir)
     datafile = os.path.join(datadir,args.exp_name + ".pkl")
     if os.path.isfile(datafile):
         with open(datafile, 'rb') as f:
@@ -293,18 +295,60 @@ def return_dataset(args):
         print("Loaded embedding list")
     else:
         print("Data not found:", datafile)
-    LOGGER.info(">>> Num of skills in one traj: {}~{}, Average {}".format(min(emb_list["num_z"]), 
-                                                                      max(emb_list["num_z"]), 
-                                                                      sum(emb_list["num_z"])/len(emb_list["num_z"])))
+    # LOGGER.info(">>> Num of skills in one traj: {}~{}, Average {}".format(min(emb_list["num_z"]), 
+    #                                                                   max(emb_list["num_z"]), 
+    #                                                                   sum(emb_list["num_z"])/len(emb_list["num_z"])))
     emb_list["emb"] = [np.squeeze(i) for i in emb_list["emb"]]
     length = len(emb_list["emb"])
 
     # load rewards
     mycwd = os.getcwd()
     os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
-    dataset_paths = ['/home/zichang/proj/IQ-Learn/iq_learn/experts/ant/Ant-v2_300_2964r.pkl',
+    # HACK change this for return dataset 
+    # check if args.exp_name contains "Cheetah", "Hopper", "Walker" etc., and match it with the corresponding dataset_paths
+    if "cheetah" in args.exp_name.lower():
+        dataset_paths = ['/home/zichang/proj/IQ-Learn/iq_learn/experts/cheetah/HalfCheetah-v2_300_6317r.pkl',
+                            '/home/zichang/proj/IQ-Learn/iq_learn/experts/cheetah/HalfCheetah-v2_300_10851r.pkl',
+                            '/home/zichang/proj/IQ-Learn/iq_learn/experts/cheetah/HalfCheetah-v2_300_12794r.pkl']
+    elif "hopper" in args.exp_name.lower():
+        dataset_paths = ['/home/zichang/proj/IQ-Learn/iq_learn/experts/hopper/Hopper-v2_300_409r.pkl',
+                            '/home/zichang/proj/IQ-Learn/iq_learn/experts/hopper/Hopper-v2_300_879r.pkl',
+                            '/home/zichang/proj/IQ-Learn/iq_learn/experts/hopper/Hopper-v2_300_3205r.pkl']
+    elif "walker" in args.exp_name.lower():
+        dataset_paths = ['/home/zichang/proj/IQ-Learn/iq_learn/experts/walker/Walker2d-v2_300_3073r.pkl',
+                            '/home/zichang/proj/IQ-Learn/iq_learn/experts/walker/Walker2d-v2_300_4366r.pkl',
+                            '/home/zichang/proj/IQ-Learn/iq_learn/experts/walker/Walker2d-v2_300_5909r.pkl']
+    elif "ant" in args.exp_name.lower():
+        dataset_paths = ['/home/zichang/proj/IQ-Learn/iq_learn/experts/ant/Ant-v2_300_2964r.pkl',
                         '/home/zichang/proj/IQ-Learn/iq_learn/experts/ant/Ant-v2_300_4872r.pkl',
                         '/home/zichang/proj/IQ-Learn/iq_learn/experts/ant/Ant-v2_300_5652r.pkl']
+    elif "humanoid" in args.exp_name.lower():
+        dataset_paths = ['/home/zichang/proj/IQ-Learn/iq_learn/experts/humanoid/Humanoid-v2_300_2907r.pkl',
+                        '/home/zichang/proj/IQ-Learn/iq_learn/experts/humanoid/Humanoid-v2_300_4997r.pkl',
+                        '/home/zichang/proj/IQ-Learn/iq_learn/experts/humanoid/Humanoid-v2_300_6206r.pkl']
+    else:
+        print("Name does not contain available env name: Cheetah, Walker, Hopper, Ant, Humanoid")
+    
+    # if "Cheetah" in args.exp_name:
+    #     dataset_paths = ['/home/zichang/proj/IQ-Learn/iq_learn/experts/cheetah/HalfCheetah-v2_300_6317r.pkl',
+    #                         '/home/zichang/proj/IQ-Learn/iq_learn/experts/cheetah/HalfCheetah-v2_300_10851r.pkl',
+    #                         '/home/zichang/proj/IQ-Learn/iq_learn/experts/cheetah/HalfCheetah-v2_300_12794r.pkl']
+    # elif "Hopper" in args.exp_name:
+    #     dataset_paths = ['/home/zichang/proj/IQ-Learn/iq_learn/experts/hopper/Hopper-v2_300_409r.pkl',
+    #                         '/home/zichang/proj/IQ-Learn/iq_learn/experts/hopper/Hopper-v2_300_879r.pkl',
+    #                         '/home/zichang/proj/IQ-Learn/iq_learn/experts/hopper/Hopper-v2_300_3205r.pkl']
+    # elif "Walker" in args.exp_name:
+    #     dataset_paths = ['/home/zichang/proj/IQ-Learn/iq_learn/experts/walker/Walker2d-v2_300_3073r.pkl',
+    #                         '/home/zichang/proj/IQ-Learn/iq_learn/experts/walker/Walker2d-v2_300_4366r.pkl',
+    #                         '/home/zichang/proj/IQ-Learn/iq_learn/experts/walker/Walker2d-v2_300_5909r.pkl']
+    # elif "Ant" in args.exp_name:
+    #     dataset_paths = ['/home/zichang/proj/IQ-Learn/iq_learn/experts/ant/Ant-v2_300_2964r.pkl',
+    #                     '/home/zichang/proj/IQ-Learn/iq_learn/experts/ant/Ant-v2_300_4872r.pkl',
+    #                     '/home/zichang/proj/IQ-Learn/iq_learn/experts/ant/Ant-v2_300_5652r.pkl']
+    # elif "Humanoid" in args.exp_name:
+    #     dataset_paths=['/home/zichang/proj/IQ-Learn/iq_learn/experts/humanoid/Humanoid-v2_300_2907r.pkl',
+    #                     '/home/zichang/proj/IQ-Learn/iq_learn/experts/humanoid/Humanoid-v2_300_4997r.pkl',
+    #                     '/home/zichang/proj/IQ-Learn/iq_learn/experts/humanoid/Humanoid-v2_300_6206r.pkl']
     rewards = []
     for idx, dataset_path in enumerate(dataset_paths):
         with open(dataset_path, 'rb') as f:
@@ -315,14 +359,17 @@ def return_dataset(args):
     data = [[emb_list["emb"][i], torch.tensor([rewards[i]])]for i in range(length)]
     random.shuffle(data)
     num_heldout = 82
-    train_data =  data[:-num_heldout]
+    train_data = data[:-num_heldout]
     test_data = data[-num_heldout:]
 
     train_data, x_mean, x_std = normalizebyi(train_data, 0, dim=0, type="train")
+    train_data = [[np.nan_to_num(i[0], nan=1e-8), i[1]] for i in train_data]
     train_data, y_mean, y_std = normalizebyi(train_data, 1, dim=0,  type="train")
+
     train_data = [[train_data[i][0], torch.tensor([train_data[i][1]])] for i in range(len(train_data))]
     
     test_data, _, _ = normalizebyi(test_data, 0, dim=0, mean=x_mean, std=x_std, type="test")
+    test_data = [[np.nan_to_num(i[0], nan=1e-8), i[1]] for i in test_data]
     # save meanstd for evaluation use
     datafile_meanstd_return = os.path.join(datadir,f"{args.exp_name}_predict_return_meanstd" + ".pkl")
     with open(datafile_meanstd_return, 'wb') as f:
@@ -340,7 +387,7 @@ def return_dataset(args):
 
 def level_dataset(args):
     print(f"Fetching data for level...")
-    datadir = "data"
+    datadir = os.path.join("data", args.datadir)
     datafile = os.path.join(datadir,args.exp_name + ".pkl")
     if os.path.isfile(datafile):
         with open(datafile, 'rb') as f:
@@ -348,9 +395,9 @@ def level_dataset(args):
         print("Loaded previous data")
     else:
         print("Data not found:", datafile)
-    LOGGER.info(">>> Num of skills in one traj: {}~{}, Average {}".format(min(emb_list["num_z"]), 
-                                                                      max(emb_list["num_z"]), 
-                                                                      sum(emb_list["num_z"])/len(emb_list["num_z"])))
+    # LOGGER.info(">>> Num of skills in one traj: {}~{}, Average {}".format(min(emb_list["num_z"]), 
+    #                                                                   max(emb_list["num_z"]), 
+    #                                                                   sum(emb_list["num_z"])/len(emb_list["num_z"])))
     emb_list["emb"] = [np.squeeze(i) for i in emb_list["emb"]]
     length = len(emb_list["emb"])
     data = [[emb_list["emb"][i], emb_list["level"][i]]for i in range(length)]
@@ -381,11 +428,14 @@ def main():
         "--label", type=str, default="level", choices=["level", "return"]
     )
     arg_parser.add_argument(
+        "--datadir", type=str, default="baseline", choices=["ours", "baseline","gcpc_wo_r", "z_logit"]
+    )
+    arg_parser.add_argument(
             "-s", "--seed", default=0, help="random seed to use.", type=int)
     
     args = arg_parser.parse_args()
 
-    logname = os.path.join("result_classification", f"{args.exp_name}_{args.label}.log")
+    logname = os.path.join("result_classification", args.datadir, f"{args.exp_name}_{args.label}.log")
     logging.basicConfig(filename=logname,
                         filemode='w',
                         # format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
@@ -398,7 +448,7 @@ def main():
     torch.manual_seed(args.seed)
 
     if args.label == "level":
-        datadir = "data"
+        datadir = os.path.join("data", args.datadir)
         datafile_train = os.path.join(datadir,f"{args.exp_name}_predict_level_train" + ".pkl")
         datafile_test = os.path.join(datadir,f"{args.exp_name}_predict_level_test" + ".pkl")
         if os.path.isfile(datafile_train):
@@ -414,7 +464,7 @@ def main():
         OUTPUT_DIM = 3
         criterion = nn.CrossEntropyLoss()
     else:
-        datadir = "data"
+        datadir = os.path.join("data", args.datadir)
         datafile_train = os.path.join(datadir,f"{args.exp_name}_predict_return_train" + ".pkl")
         datafile_test = os.path.join(datadir,f"{args.exp_name}_predict_return_test" + ".pkl")
         if os.path.isfile(datafile_train):
@@ -478,6 +528,7 @@ def main():
 
     train_loss_list = []
     val_loss_list = []
+    save_flag = False # in case no model is saved
     for epoch in trange(EPOCHS):
 
         start_time = time.monotonic()
@@ -487,6 +538,7 @@ def main():
         train_loss_list.append(train_loss)
         val_loss_list.append(valid_loss)
         if valid_loss < best_valid_loss:
+            save_flag = True
             best_valid_loss = valid_loss
             torch.save(model.state_dict(), f'experiments/mlp/{args.exp_name}_model.pt')
 
@@ -501,7 +553,8 @@ def main():
             LOGGER.info(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s')
             LOGGER.info(f'\tTrain Loss: {train_loss:.10f}')
             LOGGER.info(f'\t Val. Loss: {valid_loss:.10f}')
-
+    if save_flag==False:
+        torch.save(model.state_dict(), f'experiments/mlp/{args.exp_name}_model.pt')
     model.load_state_dict(torch.load(f'experiments/mlp/{args.exp_name}_model.pt'))
    
     if args.label=="level":
@@ -509,7 +562,7 @@ def main():
         LOGGER.info(f'Test Loss: {test_loss:.3f} | Test Acc: {test_acc*100:.2f}%')
         images, labels, probs = get_predictions(model, test_iterator, device)
         pred_labels = torch.argmax(probs, 1)
-        plot_confusion_matrix(labels, pred_labels,args.exp_name)
+        plot_confusion_matrix(labels, pred_labels,args.exp_name, args)
     else:
         datafile_meanstd_return = os.path.join(datadir,f"{args.exp_name}_predict_return_meanstd" + ".pkl")
         with open(datafile_meanstd_return, 'rb') as f:
@@ -521,8 +574,8 @@ def main():
         # test_loss, test_acc = evaluate_return_wo_batch(model, test_iterator, criterion, device, mean, std)
         LOGGER.info(f'Test Loss: {test_loss:.5f}')
         LOGGER.info(f'Test Loss per traj: {100*test_loss/len(test_data):.2f}%')
-        plot_loss(train_loss_list, "train_loss")
-        plot_loss(val_loss_list, "val_loss")
+        plot_loss(train_loss_list, "train_loss", args)
+        plot_loss(val_loss_list, "val_loss", args)
     
     print("Log saved at {}".format(logname))
 

@@ -212,7 +212,7 @@ def main(cfg: DictConfig):
         previous_dir = os.getcwd()
 
         # Change to the desired directory
-        target_dir = '/common/home/users/z/zichang.ge.2023/proj/IQ-Learn/iq_learn/encoder'
+        target_dir = '/home/zichang/proj/IQ-Learn/iq_learn/encoder'
         os.chdir(target_dir)
         print("Current working directory: ", os.getcwd())
         sys.path.append(target_dir)
@@ -291,6 +291,8 @@ def main(cfg: DictConfig):
                 print("Force normalizing expert action to [-1, 1]")
                 expert_action = torch.clamp(expert_action, min=-1.0 + epsilon, max=1.0 - epsilon)
                 print(expert_action.min(), expert_action.max())
+            clip_value = 5.0
+            torch.nn.utils.clip_grad_norm_(encoder.parameters(), clip_value)
             losses = agent.bc_update(
                 expert_obs,
                 expert_action,
@@ -385,6 +387,9 @@ def main(cfg: DictConfig):
                 learn_steps_bc += 1
                 print("Finished BC!")
                 break
+            if learn_steps_bc == 50:
+                exit_save(encoder, exp_dir, experts, device, learn_steps_bc, args) 
+                print(f"Early save at step {learn_steps_bc}")
     exit_save(encoder, exp_dir, experts, device, learn_steps_bc, args) 
     wandb.finish()   
     
