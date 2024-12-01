@@ -478,9 +478,41 @@ def main():
         )
         output_normal = True
         os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
+    elif "pusher" in args.dataset_path:
+        train_loader, test_loader = utils.pusher_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
+        full_loader = utils.pusher_full_loader(1, args.eval_expert_file)
+        action_encoder = LinearLayer(
+            input_size=train_loader.dataset.action_size,
+            output_size=args.belief_size)
+        encoder = LinearLayer(
+            input_size=train_loader.dataset.obs_size,
+            output_size=args.belief_size)
+        decoder = GridDecoder(
+            input_size=args.belief_size,
+            action_size=train_loader.dataset.action_size,
+            feat_size=args.belief_size,
+        )
+        output_normal = True
+        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
     elif "swimmer" in args.dataset_path:
         train_loader, test_loader = utils.swimmer_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
         full_loader = utils.swimmer_full_loader(1, args.eval_expert_file)
+        action_encoder = LinearLayer(
+            input_size=train_loader.dataset.action_size,
+            output_size=args.belief_size)
+        encoder = LinearLayer(
+            input_size=train_loader.dataset.obs_size,
+            output_size=args.belief_size)
+        decoder = GridDecoder(
+            input_size=args.belief_size,
+            action_size=train_loader.dataset.action_size,
+            feat_size=args.belief_size,
+        )
+        output_normal = True
+        os.chdir("/home/zichang/proj/IQ-Learn/iq_learn/encoder")
+    elif "humanoid_standup" in args.dataset_path:
+        train_loader, test_loader = utils.humanoid_standup_loader(args.batch_size, args.hil_seq_size, expert_file=args.expert_file)
+        full_loader = utils.humanoid_standup_full_loader(1, args.eval_expert_file)
         action_encoder = LinearLayer(
             input_size=train_loader.dataset.action_size,
             output_size=args.belief_size)

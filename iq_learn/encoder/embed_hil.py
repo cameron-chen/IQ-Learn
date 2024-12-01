@@ -66,8 +66,16 @@ def run_exp(config, expert_file, datafile, embed_mode, cond_dim):
         full_loader = utils.lunar_full_loader(1, expert_file)
         hssm.post_obs_state._output_normal = True
         hssm._output_normal = True
+    elif config.get("env") == "pusher":
+        full_loader = utils.pusher_full_loader(1, expert_file)
+        hssm.post_obs_state._output_normal = True
+        hssm._output_normal = True
     elif config.get("env") == "swimmer":
         full_loader = utils.swimmer_full_loader(1, expert_file)
+        hssm.post_obs_state._output_normal = True
+        hssm._output_normal = True
+    elif config.get("env") == "humanoid_standup":
+        full_loader = utils.humanoid_standup_full_loader(1, expert_file)
         hssm.post_obs_state._output_normal = True
         hssm._output_normal = True
     elif config.get("env") == "invertedp":
