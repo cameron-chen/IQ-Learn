@@ -140,7 +140,7 @@ iq_learn/test
 
 *.png
 *.zip
-*.txt
+# *.txt
 *.pkl
 *.sh
 *.ckpt
